@@ -18,14 +18,23 @@ import os
 import sys
 import multiprocessing as mp
 from multiprocessing import Pool
-#import ffmpeg
+
+if sys.platform == 'darwin':
+    save_dir = './wake_field_cases'
+    data_dir = './data'
+    fig_dir = './figs'
+elif sys.platform == 'linux':
+    save_dir = '/scratch/ahenry/wake_field_cases'
+    data_dir = '/scratch/ahenry/data'
+    fig_dir = '/scratch/ahenry/figs'
 
 # **************************************** Parameters **************************************** #
 
 # total simulation time
-total_time = 600 # ten minutes
+DEBUG = True
+total_time = 10 if DEBUG else 600 # ten minutes
 dt = 1.0 # DOESN'T WORK WELL WITH OTHER DT VALUES
-DEFAULT_AX_IND_FACTOR = 0.67
+DEFAULT_AX_IND_FACTOR = 2 / 3
 DEFAULT_YAW_ANGLE = 0
 
 # Test varying wind speed and direction? Or test one at a time? 
@@ -44,7 +53,7 @@ floris_dir = "./2turb_floris_input.json"
 # Initialize
 fi = wfct.floris_interface.FlorisInterface(floris_dir)
 fi.reinitialize_flow_field(wind_speed=8, wind_direction=270) 
-fi.calculate_wake() 
+fi.calculate_wake()
 n_turbines = len(fi.floris.farm.turbines)
 
 # Reinitialize
@@ -66,16 +75,19 @@ if not os.path.exists(save_dir):
 # TODO - alt generate DLCs using turbsim
 
 case_inputs = {}
-case_inputs['mean_wind_speed'] = {'group': 0, 'vals': np.linspace(8, 12, 3)}
-case_inputs['mean_wind_dir'] = {'group': 1, 'vals': np.linspace(250, 290, 3)}
+case_inputs['mean_wind_speed'] = {'group': 0, 'vals': [8] if DEBUG else np.linspace(8, 12, 3)}
+case_inputs['mean_wind_dir'] = {'group': 1, 'vals': [270] if DEBUG else np.linspace(250, 270, 3)}
 max_downstream_dist = max(fi.floris.farm.turbine_map.coords[t].x1 for t in range(n_turbines))
-upstream_turbine_indices = []
-for t in range(n_turbines):
-    # if not most downstream turbine
-    if fi.floris.farm.turbine_map.coords[t].x1 < max_downstream_dist:
-        upstream_turbine_indices.append(t)
-        case_inputs[f'yaw_angles_{t}'] = {'group': 2 + t, 'vals': [0]} #np.linspace(0, 15, 3)}
-        case_inputs[f'ax_ind_factors_{t}'] = {'group': 2 + n_turbines + t, 'vals': [0, 0.33, 0.67]}
+min_downstream_dist = min(fi.floris.farm.turbine_map.coords[t].x1 for t in range(n_turbines))
+# exclude most downstream turbine
+upstream_turbine_indices = [t for t in range(n_turbines) if fi.floris.farm.turbine_map.coords[t].x1 < max_downstream_dist]
+n_upstream_turbines = len(upstream_turbine_indices)
+downstream_turbine_indices = [t for t in range(n_turbines) if fi.floris.farm.turbine_map.coords[t].x1 > min_downstream_dist]
+n_downstream_turbines = len(downstream_turbine_indices)
+
+for t_idx, t in enumerate(upstream_turbine_indices):
+    case_inputs[f'yaw_angles_{t}'] = {'group': 2 + t_idx, 'vals': [0]} #np.linspace(0, 15, 3)}
+    case_inputs[f'ax_ind_factors_{t}'] = {'group': 2 + n_upstream_turbines + t_idx, 'vals': [0.22, 0.33, 0.67]}
 
 case_list, case_name_list = CaseGen_General(case_inputs, dir_matrix='.', namebase='wake_field', save_matrix=True)
 
@@ -120,9 +132,9 @@ def sim_func(case_idx, case):
     # lists that will be needed for visualizationsd
     freestream_wind_speed = []
     freestream_wind_dir = []
-    turbine_wind_speeds = [[] for t in range(n_turbines)]
-    turbine_wind_dirs = [[] for t in range(n_turbines)]
-    turbine_turb_intensities = [[] for t in range(n_turbines)]
+    turbine_wind_speeds = [[] for t in range(n_downstream_turbines)]
+    turbine_wind_dirs = [[] for t in range(n_downstream_turbines)]
+    turbine_turb_intensities = [[] for t in range(n_downstream_turbines)]
     time = np.arange(0, total_time, dt)
     horizontal_planes = []
     y_planes = []
@@ -150,10 +162,10 @@ def sim_func(case_idx, case):
             y_planes.append(fi.get_y_plane(x_resolution=200, z_resolution=100, y_loc=0.0)) # vertical plane parallel to freestream wind direction
             cross_planes.append(fi.get_cross_plane(y_resolution=100, z_resolution=100, x_loc=630.0)) # vertical plane parallel to turbine disc plane  
         
-        for t in range(n_turbines):
-            turbine_wind_speeds[t].append(fi.floris.farm.wind_map.turbine_wind_speed[t])
-            turbine_wind_dirs[t].append(fi.floris.farm.wind_map.turbine_wind_direction[t])
-            turbine_turb_intensities[t].append(fi.floris.farm.wind_map.turbine_turbulence_intensity[t])
+        for t_idx, t in enumerate(downstream_turbine_indices):
+            turbine_wind_speeds[t_idx].append(fi.floris.farm.wind_map.turbine_wind_speed[t])
+            turbine_wind_dirs[t_idx].append(fi.floris.farm.wind_map.turbine_wind_direction[t])
+            turbine_turb_intensities[t_idx].append(fi.floris.farm.wind_map.turbine_turbulence_intensity[t])
         
         # for t, turbine in enumerate(fi.floris.farm.turbines):
         #     turbine_powers[t].append(turbine.power/1e6)
@@ -181,12 +193,15 @@ def sim_func(case_idx, case):
 
         ax_ts[(case_idx * 5) + 0].plot(time, freestream_wind_speed, label='Freestream')
         ax_ts[(case_idx * 5) + 1].plot(time, freestream_wind_dir, label='Freestream')
-        for t in range(n_turbines):
-            ax_ts[(case_idx * 5) + 0].plot(time, turbine_wind_speeds[:, t], label=f'Turbine {t}')
-            ax_ts[(case_idx * 5) + 1].plot(time, turbine_wind_dirs[:, t], label=f'Turbine {t}')
-            ax_ts[(case_idx * 5) + 2].plot(time, yaw_angles[:, t], label=f'Turbine {t}')
-            ax_ts[(case_idx * 5) + 3].plot(time, ai_factors[:, t], label=f'Turbine {t}')
-            ax_ts[(case_idx * 5) + 4].plot(time, turbine_turb_intensities[:, t], label=f'Turbine {t}')
+        
+        for t_idx, t in enumerate(upstream_turbine_indices):
+            ax_ts[(case_idx * 5) + 2].plot(time, yaw_angles[:, t_idx], label=f'US Turbine {t}')
+            ax_ts[(case_idx * 5) + 3].plot(time, ai_factors[:, t_idx], label=f'US Turbine {t}')
+        
+        for t_idx, t in enumerate(downstream_turbine_indices):
+            ax_ts[(case_idx * 5) + 0].plot(time, turbine_wind_speeds[:, t_idx], label=f'DS Turbine {t}')
+            ax_ts[(case_idx * 5) + 1].plot(time, turbine_wind_dirs[:, t_idx], label=f'DS Turbine {t}')
+            ax_ts[(case_idx * 5) + 4].plot(time, turbine_turb_intensities[:, t_idx], label=f'DS Turbine {t}')
         
         ax_ts[0].set(title='Wind Speed [m/s]')
         ax_ts[0].legend()
@@ -198,7 +213,8 @@ def sim_func(case_idx, case):
         ax_ts[3].legend()
         ax_ts[4].set(title='Turbulence Intensities [-]')
         ax_ts[4].legend()
-        plt.show()
+        # plt.show()
+        plt.savefig(os.path.join(fig_dir, 'wake_data.png'))
     
         # Animated Plot of Cut Planes
         fig_anim, ax_anim = plt.subplots(3, 1)
@@ -213,8 +229,10 @@ def sim_func(case_idx, case):
             visualize_cut_plane(y_planes[i], ax=ax_anim[1])
             visualize_cut_plane(cross_planes[i], ax=ax_anim[2])
             
-        animator_cut_plane = ani.FuncAnimation(fig_anim, cut_plane_chart, interval=100)
-        plt.show()
+        animator_cut_plane = ani.FuncAnimation(fig_anim, cut_plane_chart, frames=int(total_time // dt))
+        # plt.show()
+        vid_writer = ani.FFMpegWriter(fps=60)
+        animator_cut_plane.save(os.path.join(fig_dir, 'cut_plane_vid.mp4'), writer=vid_writer)
         
     # save case data as dataframe
     wake_field_data = {
@@ -222,23 +240,26 @@ def sim_func(case_idx, case):
         'FreestreamWindSpeed': freestream_wind_speed,
         'FreestreamWindDir': freestream_wind_dir
     }
-    for t in range(n_turbines):
+    for t_idx, t in enumerate(upstream_turbine_indices):
         wake_field_data = {**wake_field_data, 
-            f'TurbineWindSpeeds_{t}': turbine_wind_speeds[:, t],
-            f'TurbineWindDirs_{t}': turbine_wind_dirs[:, t],
-            f'TurbineTurbIntens_{t}': turbine_turb_intensities[:, t],
-            f'YawAngles_{t}': yaw_angles[:, t],
-            f'AxIndFactors_{t}': ai_factors[:, t]             
+            f'YawAngles_{t}': yaw_angles[:, t_idx],
+            f'AxIndFactors_{t}': ai_factors[:, t_idx]             
         }
-        
-        
-    wake_field_df = pd.DataFrame(data=wake_field_data)
-    wake_field_df.attrs['mean_wind_speed'] = case['mean_wind_speed']
-    wake_field_df.attrs['mean_wind_dir'] = case['mean_wind_dir']
     
-    for t in range(n_turbines):
-        wake_field_df.attrs[f'yaw_angles_{t}'] = case[f'yaw_angles_{t}']
-        wake_field_df.attrs[f'ai_factors_{t}'] = case[f'ax_ind_factors_{t}']
+    for t_idx, t in enumerate(downstream_turbine_indices):
+        wake_field_data = {**wake_field_data, 
+            f'TurbineWindSpeeds_{t}': turbine_wind_speeds[:, t_idx],
+            f'TurbineWindDirs_{t}': turbine_wind_dirs[:, t_idx],
+            f'TurbineTurbIntens_{t}': turbine_turb_intensities[:, t_idx]
+        }
+    
+    wake_field_df = pd.DataFrame(data=wake_field_data)
+    # wake_field_df.attrs['mean_wind_speed'] = case['mean_wind_speed']
+    # wake_field_df.attrs['mean_wind_dir'] = case['mean_wind_dir']
+    
+    # for t in range(n_turbines):
+    #     wake_field_df.attrs[f'yaw_angles_{t}'] = case[f'yaw_angles_{t}']
+    #     wake_field_df.attrs[f'ai_factors_{t}'] = case[f'ax_ind_factors_{t}']
     
     # export case data to csv
     wake_field_df.to_csv(os.path.join(save_dir, f'case_{case_idx}.csv'))
