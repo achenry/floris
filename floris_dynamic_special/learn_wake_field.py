@@ -189,9 +189,19 @@ if __name__ == '__main__':
         axs = axs.flatten()
         for start_t_idx in range(0, (X['full'].shape[0] - len(t)), len(t)):
             for field_idx, field in enumerate(input_labels):
-                axs[field_idx].plot(t, X['full'])
-                axs[field_idx].set(ylabel=field)
+                for delay_idx in range(0, K_DELAY + 1):
+                    if f'minus{delay_idx}' in field:
+                        row_idx = delay_idx
+                
+                for field_type_idx, field_type in enumerate(['AxIndFactors', 'YawAngles', 'FreestreamWindSpeed', 'FreestreamWindDir']):
+                    if field_type in field:
+                        col_idx = field_type_idx
+                    
+                axs[row_idx, field_type_idx].plot(t, X['full'][start_t_idx:start_t_idx + len(t), field_idx])
+                axs[row_idx, field_type_idx].set(ylabel=field)
+                
             axs[-1].set(xlabel='Time [s]')
+        plt.subplots_adjust(wspace=0.6, hspace=0.4)
         plt.show()
     
     if  NORMALIZE_DATA:
