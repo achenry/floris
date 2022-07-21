@@ -146,7 +146,7 @@ def sim_func(case_idx, case):
     ai_factors[:, upstream_turbine_indices] = [case[f'ax_ind_factors_{t}'] for t in upstream_turbine_indices] # np.tile([case[f'ax_ind_factors_{t}'] for t in upstream_turbine_indices], (int(total_time / dt), 1))
     
     fi.reinitialize_flow_field(wind_speed=ws_ts['mean'][0], wind_direction=wd_ts['mean'][0]) 
-    fi.calculate_wake()
+    fi.calculate_wake(yaw_angles=yaw_angles[0, :], axial_induction=ai_factors[0, :])
     
     # lists that will be needed for visualizationsd
     freestream_wind_speed = []

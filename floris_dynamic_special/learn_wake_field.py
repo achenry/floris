@@ -23,7 +23,7 @@ DT = 1
 K_DELAY = 1 # unconservative estimate: (distance to upstream wind turbines / freestream wind speed) / dt, consider half of freestream wind speed for conservative estimate
 MODEL_TYPE = 'error'
 N_CASES = -1
-COLLECT_DATA = False
+COLLECT_DATA = True
 NORMALIZE_DATA = True
 PLOT_DATA = True
 
