@@ -201,7 +201,7 @@ def sim_func(case_idx, case):
         # true_powers.append(sum([turbine.power for turbine in fi.floris.farm.turbines])/1e6)
 
     turbine_wind_speeds = np.array(turbine_wind_speeds).T    
-    turbine_wind_dirs = np.array(turbine_wind_dirs).T
+    # turbine_wind_dirs = np.array(turbine_wind_dirs).T
     # turbine_wind_dirs[turbine_wind_dirs > 180] = turbine_wind_dirs[turbine_wind_dirs > 180] - 360
     yaw_angles = np.array(yaw_angles)
     ai_factors = np.array(ai_factors)
