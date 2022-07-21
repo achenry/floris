@@ -25,8 +25,8 @@ dt = 1.0 # DOESN'T WORK WELL WITH OTHER DT VALUES
 
 # Test varying wind speed and direction? Or test one at a time? 
 # Step change and random variation will be added.
-test_varying_ws = True
-test_varying_wd = True
+test_varying_ws = False
+test_varying_wd = False
 
 # **************************************** Initialization **************************************** #
 # Initialize the FLORIS interface fi
