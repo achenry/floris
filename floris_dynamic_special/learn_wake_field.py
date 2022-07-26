@@ -24,12 +24,15 @@ DT = 1
 K_DELAY = 10 # unconservative estimate: (distance to upstream wind turbines / freestream wind speed) / dt, consider half of freestream wind speed for conservative estimate
 MODEL_TYPE = 'error'
 N_CASES = -1
-COLLECT_DATA = True
+COLLECT_DATA = False
 NORMALIZE_DATA = True
-PLOT_DATA = True
+PLOT_DATA = False
 
-def optimizer(obj_func, initial_theta, bounds):
-    res = minimize(obj_func, initial_theta, bounds=bounds, options={'maxiter': 1000})
+def optimizer(fun, initial_theta, bounds):
+    res = minimize(fun, initial_theta, 
+                   method="L-BFGS-B", jac=True, 
+                   bounds=bounds, 
+                   options={'maxiter': 1000})
     theta_opt = res.x
     func_min = res.fun
     return theta_opt, func_min
@@ -61,7 +64,7 @@ def generate_input_labels(upstream_turbine_indices):
 def generate_input_vector(case_df, idx, upstream_turbine_indices, effective_dk):
     inputs = []
     delay_slice = slice(idx - (K_DELAY * effective_dk), idx + 1, effective_dk)
-    inputs = inputs + case_df.iloc[delay_slice]['Time'].to_list()
+    inputs = inputs + case_df.iloc[idx:idx + 1]['Time'].to_list()
     for t in upstream_turbine_indices:
         inputs = inputs + case_df.iloc[delay_slice][f'AxIndFactors_{t}'].to_list()
         inputs = inputs + case_df.iloc[delay_slice][f'YawAngles_{t}'].to_list()
@@ -254,33 +257,18 @@ if __name__ == '__main__':
         # downstream_dist = model_fi.floris.farm.turbine_map.coords[downstream_turbine_indices[learning_turbine_index]].x1
         # freestream_ws = 8 # model_fi.floris.farm.flow_field.mean_wind_speed
         # wake_propagation_speed = downstream_dist / freestream_ws
-        delay_indices = [0, K_DELAY]
+        delay_indices = [0, int(K_DELAY // 2)]
         
         for ts_idx in range(len(start_indices) - 1):
             start_t_idx = start_indices[ts_idx]
             end_t_idx = start_indices[ts_idx + 1]
-            # for field_idx, field in enumerate(input_labels):
-                # found_delayed_ip = False
-                # for idx, delay_idx in enumerate([0, int(wake_propagation_speed / DT)]): #range(0, K_DELAY + 1):
-                #     if f'minus{delay_idx}' in field:
-                #         # row_idx = delay_idx
-                #         row_idx = idx
-                #         found_delayed_ip = True
-                
-                # if not found_delayed_ip:
-                #     continue
-                
-                # for field_type_idx, field_type in enumerate([f'AxIndFactors_{upstream_turbine_index}', f'YawAngles_{upstream_turbine_index}', 
-                #                                              'FreestreamWindSpeed', 'FreestreamWindDir']):
-                #     if field_type in field:
-                #         col_idx = field_type_idx
             
             for row_idx, delay_idx in enumerate(delay_indices):
                 for col_idx, field_type in  enumerate([f'AxIndFactors_{upstream_turbine_index}', f'YawAngles_{upstream_turbine_index}', 'FreestreamWindSpeed']):
                     field = f'{field_type}_minus{delay_idx}'
                     field_idx = input_labels.index(field)
             
-                    axs_ip[row_idx, col_idx].plot(X['full'][:, input_labels.index('Time')], X['full'][start_t_idx:end_t_idx, field_idx], label=f'Time-Series {ts_idx}')
+                    axs_ip[row_idx, col_idx].plot(X['full'][start_t_idx:end_t_idx, input_labels.index('Time')], X['full'][start_t_idx:end_t_idx, field_idx], label=f'Time-Series {ts_idx}')
                     axs_ip[row_idx, col_idx].set(title=field)
             
                     axs_ip[-1, col_idx].set(xlabel='Time [s]', xticks=X['full'][K_DELAY::int(60//DT), input_labels.index('Time')])
@@ -290,11 +278,13 @@ if __name__ == '__main__':
         plt.show()
         
         fig_op, axs_op = plt.subplots(1, 1, sharex=True)
-        for ts_idx, start_t_idx in enumerate(start_indices):
-            axs_op.plot(t[effective_k_delay:], y['full'][start_t_idx:start_t_idx + len(t) - effective_k_delay, learning_turbine_index], label=f'Time-Series {ts_idx}')
+        for ts_idx in range(len(start_indices) - 1):
+            start_t_idx = start_indices[ts_idx]
+            end_t_idx = start_indices[ts_idx + 1]
+            axs_op.plot(X['full'][start_t_idx:end_t_idx, input_labels.index('Time')], y['full'][start_t_idx:end_t_idx, learning_turbine_index], label=f'Time-Series {ts_idx}')
             axs_op.set(title=f'Turbine {downstream_turbine_indices[learning_turbine_index]} Wind Speed [m/s]')
             
-            axs_op.set(xlabel='Time [s]', xticks=t[effective_k_delay::int(60//DT)])
+            axs_op.set(xlabel='Time [s]', xticks=X['full'][K_DELAY::int(60//DT), input_labels.index('Time')])
         axs_op.legend()
         plt.subplots_adjust(wspace=0.6, hspace=0.4)
         plt.show()
@@ -302,21 +292,24 @@ if __name__ == '__main__':
     if  NORMALIZE_DATA:
         X_norm = {}
         y_norm = {}
-        X_scalar = StandardScaler().fit(X['full'])
+        # exclude Time column
+        X_scalar = StandardScaler().fit(X['full'][:, 1:])
         y_scalar = StandardScaler().fit(y['full'])
         for data_type in ['train', 'test']:
-            X_norm[data_type] = X_scalar.transform(X[data_type])
+            X_norm[data_type] = X_scalar.transform(X[data_type][:, 1:])
             y_norm[data_type] = y_scalar.transform(y[data_type])
     
     for t_idx, learning_turbine_index in enumerate(downstream_turbine_indices):
         
-        
         ## PARAMETERIZE GAUSSIAN PROCESS REGRESSOR
         kernel = RBF(length_scale=10) # DotProduct() + WhiteKernel()
-        gpr = GaussianProcessRegressor(kernel=kernel, optimizer=optimizer, normalize_y=True, n_restarts_optimizer=10, alpha=1e-10, 
-                                    random_state=0).fit(X_norm['train'], y_norm['train'][:, t_idx])
+        gpr = GaussianProcessRegressor(kernel=kernel, 
+                                        optimizer=optimizer, 
+                                       normalize_y=True, n_restarts_optimizer=10, alpha=1e-10, 
+                                    random_state=0)
+        gpr_fit = gpr.fit(X_norm['train'], y_norm['train'][:, t_idx])
         for dataset_type in ['train', 'test']:
-            print(f'Score on {dataset_type} Data:', gpr.score(X_norm[dataset_type], y_norm[dataset_type][:, t_idx]), sep=' ') # test on training/testing data
+            print(f'Score on {dataset_type} Data:', gpr_fit.score(X_norm[dataset_type], y_norm[dataset_type][:, t_idx]), sep=' ') # test on training/testing data
         
         ## PLOT TRAINING/TEST DATA AND GP PREDICTION
         mean = {}
@@ -325,7 +318,7 @@ if __name__ == '__main__':
         # field_indices = [idx for idx, l in enumerate(input_labels) if 'AxIndFactors_0' in l]
         upstream_turbine_index = upstream_turbine_indices[0]
         field_type = f'AxIndFactors_{upstream_turbine_index}'
-        fields = [f'{field_type}_minus{i}' for i in delay_indices]
+        fields = [f'{field_type}_minus{i}' for i in range(K_DELAY)]
         field_indices = [input_labels.index(f) for f in fields]
         fig, ax = plt.subplots(len(field_indices), 2)
         
@@ -376,6 +369,11 @@ if __name__ == '__main__':
             row = test_case_df.iloc[row_idx]
             sim_time = row['Time']
             
+            downstream_distance = np.array([model_fi.floris.farm.turbine_map.coords[i].x1 - min_downstream_dist for i in downstream_turbine_indices])
+            freestream_ws = row['FreestreamWindSpeed']
+            delay_dt = (2 * downstream_distance) * (1 / K_DELAY) * (1 / freestream_ws)
+            effective_dk = int(delay_dt // DT)
+            
             sim_fi.reinitialize_flow_field(wind_speed=row['FreestreamWindSpeed'], wind_direction=row['FreestreamWindDir'], sim_time=sim_time)
             
             upstream_yaw_angles = [row[f'YawAngles_{t}'] for t in upstream_turbine_indices]
@@ -391,19 +389,22 @@ if __name__ == '__main__':
                 model_fi.calculate_wake(yaw_angles=upstream_yaw_angles, 
                                         axial_induction=upstream_ax_ind_factors)
                 y_modeled = model_fi.floris.farm.wind_map.turbine_wind_speed[learning_turbine_index]
-                            
-            if row_idx >= K_DELAY:
-                y_true.append(sim_fi.floris.farm.wind_map.turbine_wind_speed[learning_turbine_index])
+            
+            # if not enough auto-regressive inputs exist to collect, skip to next time-step in data
+            if row_idx < (K_DELAY * effective_dk):
+                continue    
+             
+            y_true.append(sim_fi.floris.farm.wind_map.turbine_wind_speed[learning_turbine_index])
+            
+            X_ip = X_scalar.transform(generate_input_vector(test_case_df, row_idx, upstream_turbine_indices, effective_dk)[np.newaxis, 1:])
+            mean, std = gpr_fit.predict(X_ip, return_std=True)
+            
+            if MODEL_TYPE == 'value':
+                y_pred.append(y_scalar.inverse_transform(mean[np.newaxis, :]))
+            elif MODEL_TYPE == 'error':
+                y_pred.append(y_modeled + y_scalar.inverse_transform(mean[np.newaxis, :]))
                 
-                X_ip = X_scalar.transform(np.array(generate_input_vector(test_case_df, row_idx, upstream_turbine_indices))[np.newaxis, :], effective_dk)
-                mean, std = gpr.predict(X_ip, return_std=True)
-                
-                if MODEL_TYPE == 'value':
-                    y_pred.append(y_scalar.inverse_transform(mean[np.newaxis, :]))
-                elif MODEL_TYPE == 'error':
-                    y_pred.append(y_modeled + y_scalar.inverse_transform(mean[np.newaxis, :]))
-                    
-                y_std.append(y_scalar.inverse_transform(std[np.newaxis, :]))
+            y_std.append(y_scalar.inverse_transform(std[np.newaxis, :]))
         
         y_pred = np.concatenate(y_pred).squeeze()
         y_std = np.concatenate(y_std).squeeze()
