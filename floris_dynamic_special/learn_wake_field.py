@@ -244,19 +244,21 @@ if __name__ == '__main__':
         # start_indices = [(len(t) - K_DELAY) * k for k in plotting_datasets_idx if k < n_datasets]
         
         start_indices = []
-        for row_idx in range(X['full'].shape[0]):
+        n_datapoints = X['full'].shape[0]
+        for row_idx in range(n_datapoints):
             if X['full'][row_idx, input_labels.index('Time')] == 0:
                 start_indices.append(row_idx)
+        start_indices.append(n_datapoints)
         
-        # last_start_idx = min(X['full'].shape[0], n_plotting_datasets * le÷n(t))
         fig_ip, axs_ip = plt.subplots(2, 3, sharex=True)
         # downstream_dist = model_fi.floris.farm.turbine_map.coords[downstream_turbine_indices[learning_turbine_index]].x1
         # freestream_ws = 8 # model_fi.floris.farm.flow_field.mean_wind_speed
         # wake_propagation_speed = downstream_dist / freestream_ws
         delay_indices = [0, K_DELAY]
         
-        for ts_idx, start_t_idx in enumerate(start_indices):
-            
+        for ts_idx in range(len(start_indices) - 1):
+            start_t_idx = start_indices[ts_idx]
+            end_t_idx = start_indices[ts_idx + 1]
             # for field_idx, field in enumerate(input_labels):
                 # found_delayed_ip = False
                 # for idx, delay_idx in enumerate([0, int(wake_propagation_speed / DT)]): #range(0, K_DELAY + 1):
@@ -273,16 +275,15 @@ if __name__ == '__main__':
                 #     if field_type in field:
                 #         col_idx = field_type_idx
             
-            effective_k_delay = K_DELAY # * int(delay_dt // DT)
             for row_idx, delay_idx in enumerate(delay_indices):
                 for col_idx, field_type in  enumerate([f'AxIndFactors_{upstream_turbine_index}', f'YawAngles_{upstream_turbine_index}', 'FreestreamWindSpeed']):
                     field = f'{field_type}_minus{delay_idx}'
                     field_idx = input_labels.index(field)
             
-                    axs_ip[row_idx, col_idx].plot(t[effective_k_delay:], X['full'][start_t_idx:start_t_idx + len(t) - effective_k_delay, field_idx], label=f'Time-Series {ts_idx}')
+                    axs_ip[row_idx, col_idx].plot(X['full'][:, input_labels.index('Time')], X['full'][start_t_idx:end_t_idx, field_idx], label=f'Time-Series {ts_idx}')
                     axs_ip[row_idx, col_idx].set(title=field)
             
-                    axs_ip[-1, col_idx].set(xlabel='Time [s]', xticks=t[effective_k_delay::int(60//DT)])
+                    axs_ip[-1, col_idx].set(xlabel='Time [s]', xticks=X['full'][K_DELAY::int(60//DT), input_labels.index('Time')])
         axs_ip[0, 0].legend()
         
         plt.subplots_adjust(wspace=0.6, hspace=0.4)

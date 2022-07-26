@@ -5,7 +5,7 @@ Inputs: Yaw Angles, Freestream Wind Velocity, Freestream Wind Direction, Turbine
 Need csv containing 'true' wake characteristics at each turbine (variables) at each time-step (rows).
 '''
 
-from defusedxml import DTDForbidden
+# from defusedxml import DTDForbidden
 import matplotlib.pyplot as plt
 import matplotlib.animation as ani
 import numpy as np
@@ -102,13 +102,7 @@ for t_idx, t in enumerate(upstream_turbine_indices):
 
 case_list, case_name_list = CaseGen_General(case_inputs, dir_matrix='.', namebase='wake_field', save_matrix=True)
 
-# TODO - consider cases where each turbine is offline, still produces some wake? Can we simulate the wake from an offline turbine in FLORIS? - can I set turbine.aiset to imitate an offline turbine?
-# cases['turbine_top'] = {'group': 0, 'vals': np.linspace(-25, 25, 3)}
-# fi.floris.farm.turbine_map.coords[t].x1
-
-# TODO for each case, save freestream_wind_speed_ts, freestream_wind_dir_ts, turbine_wind_speed_ts, turbine_wind_dir_ts, yaw_angles_ts and any other wake parameters that are available
 # **************************************** Simulation **************************************** #
-
 
 def sim_func(case_idx, case):
 
