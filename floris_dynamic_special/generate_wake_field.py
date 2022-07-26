@@ -20,18 +20,19 @@ import multiprocessing as mp
 from multiprocessing import Pool
 
 if sys.platform == 'darwin':
-    save_dir = './wake_field_cases'
+    save_dir = './2turb_wake_field_cases'
     data_dir = './data'
     fig_dir = './figs'
+    DEBUG = True
 elif sys.platform == 'linux':
-    save_dir = '/scratch/ahenry/wake_field_cases'
+    save_dir = '/scratch/ahenry/2turb_wake_field_cases'
     data_dir = '/scratch/ahenry/data'
     fig_dir = '/scratch/ahenry/figs'
+    DEBUG = False
 
 # **************************************** Parameters **************************************** #
 
 # total simulation time
-DEBUG = True
 dt = 1.0 # DOESN'T WORK WELL WITH OTHER DT VALUES
 DEFAULT_AX_IND_FACTOR = 2 / 3
 DEFAULT_YAW_ANGLE = 0
@@ -68,15 +69,9 @@ n_turbines = len(fi.floris.farm.turbines)
 # fi.reinitialize_flow_field(wind_speed=start_ws, wind_direction=start_wd)
 
 # make case save dir
-if sys.platform == 'darwin':
-    save_dir = './2turb_wake_field_cases'
-    DEBUG = True
-elif sys.platform == 'linux':
-    save_dir = '/scratch/ahenry/2turb_wake_field_cases'
-    DEBUG = False
-    
-if not os.path.exists(save_dir):
-    os.mkdir(save_dir)
+for dir in [save_dir, data_dir, fig_dir]: 
+    if not os.path.exists(dir):
+        os.makedirs(dir)
 
 total_time = 600 if DEBUG else 600 # ten minutes
 
@@ -253,10 +248,10 @@ def sim_func(case_idx, case):
             visualize_cut_plane(y_planes[i], ax=ax_anim[1])
             visualize_cut_plane(cross_planes[i], ax=ax_anim[2])
             
-        animator_cut_plane = ani.FuncAnimation(fig_anim, cut_plane_chart, frames=int(total_time // dt))
-        # plt.show()
-        vid_writer = ani.FFMpegWriter(fps=100)
-        animator_cut_plane.save(os.path.join(fig_dir, 'cut_plane_vid.mp4'), writer=vid_writer)
+        # animator_cut_plane = ani.FuncAnimation(fig_anim, cut_plane_chart, frames=int(total_time // dt))
+        # # plt.show()
+        # vid_writer = ani.FFMpegWriter(fps=100)
+        # animator_cut_plane.save(os.path.join(fig_dir, 'cut_plane_vid.mp4'), writer=vid_writer)
         
     # save case data as dataframe
     wake_field_data = {
