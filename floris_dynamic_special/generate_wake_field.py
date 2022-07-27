@@ -96,9 +96,9 @@ for t_idx, t in enumerate(upstream_turbine_indices):
                                       'vals': [step_change([0], total_time, dt)]} #np.linspace(0, 15, 3)}
     # step change in axial induction factor
     case_inputs[f'ax_ind_factors_{t}'] = {'group': 2 + n_upstream_turbines + t_idx, 
-                                          'vals': [step_change([0.22, 0.28, 0.34], total_time, dt), 
-                                                   step_change([0.33, 0.41, 0.49], total_time, dt), 
-                                                   step_change([0.66, 0.58, 0.5], total_time, dt)]} #[0.22, 0.33, 0.67]}
+                                          'vals': [step_change([0.11, 0.22, 0.33], total_time, dt), 
+                                                   step_change([0.33, 0.22, 0.11], total_time, dt), 
+                                                   step_change([0.0, 0.1, 0.2], total_time, dt)]} #[0.22, 0.33, 0.67]}
 
 case_list, case_name_list = CaseGen_General(case_inputs, dir_matrix='.', namebase='wake_field', save_matrix=True)
 
@@ -225,7 +225,7 @@ def sim_func(case_idx, case):
         # ax_ts[4].set(title='Turbulence Intensities [-]')
         # ax_ts[4].legend()
         for ax in ax_ts:
-            ax.set(xticks=time, xlabel='Time [s]')
+            ax.set(xticks=time[0:-1:int(60 // DT)], xlabel='Time [s]')
         plt.show()
         plt.savefig(os.path.join(fig_dir, 'wake_data.png'))
     
