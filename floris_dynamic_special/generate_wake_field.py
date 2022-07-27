@@ -225,9 +225,9 @@ def sim_func(case_idx, case):
     # export case data to csv
     wake_field_df.to_csv(os.path.join(save_dir, f'case_{case_idx}.csv'))
     
-    return wake_field_data, horizontal_planes, y_planes, cross_planes
+    return wake_field_df, horizontal_planes, y_planes, cross_planes
 
-def plot_ts(dfs, horizontal_planes, y_planes, cross_planes, upstream_turbine_indices, downstream_turbine_indices, horizontal_):
+def plot_ts(dfs, horizontal_planes, y_planes, cross_planes, upstream_turbine_indices, downstream_turbine_indices):
     # Plot vs. time
     n_plots = 4
     fig_ts, ax_ts = plt.subplots(n_plots, 1, sharex=True) #len(case_list), 5)
@@ -244,15 +244,15 @@ def plot_ts(dfs, horizontal_planes, y_planes, cross_planes, upstream_turbine_ind
             ai_factors = np.hstack([dfs[case_idx][f'AxIndFactors_{t}'][:, np.newaxis] for t in upstream_turbine_indices])
             turbine_wind_speeds = np.hstack([dfs[case_idx][f'TurbineWindSpeeds_{t}'][:, np.newaxis] for t in downstream_turbine_indices])
             
-            ax_ts[0].plot(time, freestream_wind_speed, label='Freestream')
-            ax_ts[1].plot(time, freestream_wind_dir, label='Freestream')
+            ax_ts[0].plot(time, freestream_wind_speed, label=f'Freestream Case {case_idx}')
+            ax_ts[1].plot(time, freestream_wind_dir, label=f'Freestream Case {case_idx}')
             
             for t_idx, t in enumerate(upstream_turbine_indices):
-                ax_ts[2].plot(time, yaw_angles[:, t_idx], label=f'US Turbine {t}')
-                ax_ts[3].plot(time, ai_factors[:, t_idx], label=f'US Turbine {t}')
+                ax_ts[2].plot(time, yaw_angles[:, t_idx], label=f'US Turbine {t} Case {case_idx}')
+                ax_ts[3].plot(time, ai_factors[:, t_idx], label=f'US Turbine {t} Case {case_idx}')
             
             for t_idx, t in enumerate(downstream_turbine_indices):
-                ax_ts[0].plot(time, turbine_wind_speeds[:, t_idx], label=f'DS Turbine {t}')
+                ax_ts[0].plot(time, turbine_wind_speeds[:, t_idx], label=f'DS Turbine {t} Case {case_idx}')
                 # ax_ts[1].plot(time, turbine_wind_dirs[:, t_idx], label=f'DS Turbine {t}')
                 # ax_ts[4].plot(time, turbine_turb_intensities[:, t_idx], label=f'DS Turbine {t}')
             
@@ -270,36 +270,34 @@ def plot_ts(dfs, horizontal_planes, y_planes, cross_planes, upstream_turbine_ind
                 ax.set(xticks=time[0:-1:int(60 // DT)], xlabel='Time [s]')
         
             # Animated Plot of Cut Planes
-            for hp, yp, cp in zip(horizontal_planes, y_planes, cross_planes):
-                if len(hp) == 0:
-                    continue
-                fig_anim, ax_anim = plt.subplots(3, 1)
-                ax_anim[0].set(title='Horizontal')
-                ax_anim[1].set(title='Streamwise Plane')
-                ax_anim[2].set(title='Cross-stream Plane')
-                def cut_plane_chart(i: int):
-                    ax_anim[0].clear()
-                    ax_anim[1].clear()
-                    ax_anim[2].clear()
-                    visualize_cut_plane(hp[i], ax=ax_anim[0])
-                    visualize_cut_plane(yp[i], ax=ax_anim[1])
-                    visualize_cut_plane(cp[i], ax=ax_anim[2])
+            # for hp, yp, cp in zip(horizontal_planes, y_planes, cross_planes):
+            #     if len(hp) == 0:
+            #         continue
+            #     fig_anim, ax_anim = plt.subplots(3, 1)
+            #     ax_anim[0].set(title='Horizontal')
+            #     ax_anim[1].set(title='Streamwise Plane')
+            #     ax_anim[2].set(title='Cross-stream Plane')
+            #     def cut_plane_chart(i: int):
+            #         ax_anim[0].clear()
+            #         ax_anim[1].clear()
+            #         ax_anim[2].clear()
+            #         visualize_cut_plane(hp[i], ax=ax_anim[0])
+            #         visualize_cut_plane(yp[i], ax=ax_anim[1])
+            #         visualize_cut_plane(cp[i], ax=ax_anim[2])
                 
                 # animator_cut_plane = ani.FuncAnimation(fig_anim, cut_plane_chart, frames=int(total_time // DT))
                 # # plt.show()
                 # vid_writer = ani.FFMpegWriter(fps=100)
                 # animator_cut_plane.save(os.path.join(fig_dir, 'cut_plane_vid.mp4'), writer=vid_writer)
-
+    
 if __name__ == '__main__':
     # if not DEBUG:
     pool = Pool()    
-    dfs, horizontal_planes, y_planes, cross_planes = pool.starmap(sim_func, zip(range(len(case_list)), case_list))
+    res = pool.starmap(sim_func, zip(range(len(case_list)), case_list))
+    dfs, horizontal_planes, y_planes, cross_planes = [r[0] for r in res], [r[1] for r in res], [r[2] for r in res], [r[3] for r in res]
     pool.close()
-    
+                                                                                                         
     plot_ts(dfs, horizontal_planes, y_planes, cross_planes, upstream_turbine_indices, downstream_turbine_indices)
     
-    # plt.show()
-    # plt.savefig(os.path.join(fig_dir, 'wake_data.png'))
-    # else:
-    #     for c in range(len(case_list)):
-    #         sim_func(c, case_list[c])
+    plt.show()
+    plt.savefig(os.path.join(fig_dir, 'wake_data.png'))

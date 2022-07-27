@@ -22,15 +22,17 @@ from scipy.optimize import minimize
 PROPORTION_TRAINING_DATA = 0.85
 DT = 1
 K_DELAY = 10 # unconservative estimate: (distance to upstream wind turbines / freestream wind speed) / dt, consider half of freestream wind speed for conservative estimate
-MODEL_TYPE = 'error'
+MODEL_TYPE = 'value' # 'error'
 N_CASES = -1
 COLLECT_DATA = False
-NORMALIZE_DATA = False
+NORMALIZE_DATA = True
 MODEL_GP = True
 PLOT_DATA = True
 
-def learn(offline=True, sim_time=None):
-    pass
+def learn(offline=True, sim_time=None, data=None):
+    if offline:
+        # compile all offline data and generate gp model
+        pass
 
 def optimizer(fun, initial_theta, bounds):
     res = minimize(fun, initial_theta, 
@@ -184,7 +186,7 @@ if __name__ == '__main__':
         if PLOT_DATA:
             learning_turbine_index = downstream_turbine_indices[0]
             upstream_turbine_index = upstream_turbine_indices[0]
-            plotting_datasets_idx = [0]
+            plotting_datasets_idx = [0, 1]
             n_datasets = len(wake_field_dfs)
             fig, axs = plt.subplots(6, 1, sharex=True)
             for df_idx in plotting_datasets_idx:
@@ -250,6 +252,16 @@ if __name__ == '__main__':
                 start_indices.append(row_idx + 1)
         start_indices.append(n_datapoints)
         
+        fig, ax = plt.subplots(2, 1, sharex=True)
+        ax[0].set(title='Ax Ind Factors [-]')
+        ax[1].set(title='Turbine Wind Speed [m/s]')
+        for idx in range(len(start_indices) - 1):
+            start_idx = start_indices[idx]
+            end_idx = start_indices[idx + 1]
+            ax[0].plot(X['full'][start_idx:end_idx, 0], X['full'][start_idx:end_idx, 11], label=f'Case {idx}')
+            ax[1].plot(X['full'][start_idx:end_idx, 0], y['full'][start_idx:end_idx, 0], label=f'Case {idx}')
+        ax[0].legend()
+        
         fig_ip, axs_ip = plt.subplots(2, 3, sharex=True)
         # downstream_dist = model_fi.floris.farm.turbine_map.coords[downstream_turbine_indices[learning_turbine_index]].x1
         # freestream_ws = 8 # model_fi.floris.farm.flow_field.mean_wind_speed
@@ -265,7 +277,7 @@ if __name__ == '__main__':
                     field = f'{field_type}_minus{delay_idx}'
                     field_idx = input_labels.index(field)
             
-                    axs_ip[row_idx, col_idx].plot(X['full'][start_t_idx:end_t_idx, input_labels.index('Time')], X['full'][start_t_idx:end_t_idx, field_idx], label=f'Time-Series {ts_idx}')
+                    axs_ip[row_idx, col_idx].plot(X['full'][start_t_idx:end_t_idx, input_labels.index('Time')], X['full'][start_t_idx:end_t_idx, field_idx], label=f'Case {ts_idx}')
                     axs_ip[row_idx, col_idx].set(title=field)
             
                     axs_ip[-1, col_idx].set(xlabel='Time [s]', xticks=X['full'][K_DELAY::int(60//DT), input_labels.index('Time')])
@@ -278,7 +290,7 @@ if __name__ == '__main__':
         for ts_idx in range(len(start_indices) - 1):
             start_t_idx = start_indices[ts_idx]
             end_t_idx = start_indices[ts_idx + 1]
-            axs_op.plot(X['full'][start_t_idx:end_t_idx, input_labels.index('Time')], y['full'][start_t_idx:end_t_idx, learning_turbine_index], label=f'Time-Series {ts_idx}')
+            axs_op.plot(X['full'][start_t_idx:end_t_idx, input_labels.index('Time')], y['full'][start_t_idx:end_t_idx, learning_turbine_index], label=f'Case {ts_idx}')
             axs_op.set(title=f'Turbine {downstream_turbine_indices[learning_turbine_index]} Wind Speed [m/s]')
             
             axs_op.set(xlabel='Time [s]', xticks=X['full'][K_DELAY::int(60//DT), input_labels.index('Time')])
