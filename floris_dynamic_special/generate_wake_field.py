@@ -5,8 +5,10 @@ Inputs: Yaw Angles, Freestream Wind Velocity, Freestream Wind Direction, Turbine
 Need csv containing 'true' wake characteristics at each turbine (variables) at each time-step (rows).
 '''
 
+# git add . & git commit -m "updates" & git push origin
 # ssh ahenry@eagle.hpc.nrel.gov
-# 
+# cd ...
+# sbatch ...
 
 # from defusedxml import DTDForbidden
 import matplotlib.pyplot as plt
