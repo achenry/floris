@@ -5,6 +5,9 @@ Inputs: Yaw Angles, Freestream Wind Velocity, Freestream Wind Direction, Turbine
 Need csv containing 'true' wake characteristics at each turbine (variables) at each time-step (rows).
 '''
 
+# ssh ahenry@eagle.hpc.nrel.gov
+# 
+
 # from defusedxml import DTDForbidden
 import matplotlib.pyplot as plt
 import matplotlib.animation as ani
@@ -20,12 +23,12 @@ import multiprocessing as mp
 from multiprocessing import Pool
 
 if sys.platform == 'darwin':
-    save_dir = './2turb_wake_field_cases'
+    save_dir = './9turb_wake_field_cases'
     data_dir = './data'
     fig_dir = './figs'
     DEBUG = True
 elif sys.platform == 'linux':
-    save_dir = '/scratch/ahenry/2turb_wake_field_cases'
+    save_dir = '/scratch/ahenry/9turb_wake_field_cases'
     data_dir = '/scratch/ahenry/data'
     fig_dir = '/scratch/ahenry/figs'
     DEBUG = False
@@ -55,7 +58,7 @@ def step_change(vals, T, dt):
 # the underlying classes
 # floris_dir = "./2turb_floris_input.json"
 
-floris_dir = "./2turb_floris_input.json"
+floris_dir = "./9turb_floris_input.json"
 
 # Initialize
 fi = wfct.floris_interface.FlorisInterface(floris_dir)
@@ -80,7 +83,7 @@ total_time = 600 if DEBUG else 600 # ten minutes
 
 case_inputs = {}
 case_inputs['mean_wind_speed'] = {'group': 0, 
-                                  'vals': [step_change([8], total_time, DT)] if DEBUG else [step_change([val], total_time, DT) for val in np.linspace(8, 12, 3)]}
+                                  'vals': [step_change([8, 12, 16], total_time, DT)] if DEBUG else [step_change([val], total_time, DT) for val in np.linspace(8, 16, 3)]}
 case_inputs['mean_wind_dir'] = {'group': 1, 
                                 'vals': [step_change([270], total_time, DT)] if DEBUG else [step_change([val], total_time, DT) for val in np.linspace(250, 270, 3)]}
 max_downstream_dist = max(fi.floris.farm.turbine_map.coords[t].x1 for t in range(n_turbines))
@@ -93,11 +96,11 @@ n_downstream_turbines = len(downstream_turbine_indices)
 
 for t_idx, t in enumerate(upstream_turbine_indices):
     case_inputs[f'yaw_angles_{t}'] = {'group': 2 + t_idx, 
-                                      'vals': [step_change([0], total_time, DT)]} #np.linspace(0, 15, 3)}
+                                      'vals': [step_change([val], total_time, DT) for val in np.linspace(0, 15, 3)]}
     # step change in axial induction factor
     case_inputs[f'ax_ind_factors_{t}'] = {'group': 2 + n_upstream_turbines + t_idx, 
-                                          'vals': [step_change([0.11, 0.22, 0.33], total_time, DT), 
-                                                   step_change([0.33, 0.22, 0.11], total_time, DT)]} #[0.22, 0.33, 0.67]}
+                                          'vals': [step_change([0.0, 0.11, 0.22, 0.33], total_time, DT)]} 
+                                                #    step_change([0.33, 0.22, 0.11], total_time, DT)]} #[0.22, 0.33, 0.67]}
 
 case_list, case_name_list = CaseGen_General(case_inputs, dir_matrix='.', namebase='wake_field', save_matrix=True)
 n_cases = len(case_name_list)
