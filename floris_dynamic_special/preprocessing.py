@@ -33,6 +33,10 @@ def generate_input_labels(upstream_turbine_indices, k_delay):
     # n_inputs = (K_DELAY + 1) * ((2 * len(upstream_turbine_indices)) + 1) # delayed axial induction factor and yaw angle for each upstream turbine, delayed freestream wind speed
             
     input_labels = []
+    
+    for t in upstream_turbine_indices:
+        for idx in range(k_delay, -1, -1):
+            input_labels.append(f'TurbineWindSpeeds_{t}_minus{idx}')
      
     for t in upstream_turbine_indices:
         for idx in range(k_delay, -1, -1):
@@ -42,8 +46,8 @@ def generate_input_labels(upstream_turbine_indices, k_delay):
         for idx in range(k_delay, -1, -1):
             input_labels.append(f'YawAngles_{t}_minus{idx}')
     
-    for idx in range(k_delay, -1, -1):
-        input_labels.append(f'FreestreamWindSpeed_minus{idx}')
+    # for idx in range(k_delay, -1, -1):
+    #     input_labels.append(f'FreestreamWindSpeed_minus{idx}')
     
     for idx in range(k_delay, -1, -1):
         input_labels.append(f'FreestreamWindDir_minus{idx}')
@@ -55,9 +59,10 @@ def generate_input_vector(case_df, k, upstream_turbine_indices, effective_dk, k_
     delay_slice = slice(k - (k_delay * effective_dk), k + 1, effective_dk)
     time = case_df.iloc[k:k + 1]['Time'].to_list()
     for t in upstream_turbine_indices:
+        inputs = inputs + case_df.loc[delay_slice, f'TurbineWindSpeeds_{t}'].to_list()
         inputs = inputs + case_df.loc[delay_slice, f'AxIndFactors_{t}'].to_list()
         inputs = inputs + case_df.loc[delay_slice, f'YawAngles_{t}'].to_list()
-    inputs = inputs + case_df.loc[delay_slice, f'FreestreamWindSpeed'].to_list()
+    # inputs = inputs + case_df.loc[delay_slice, f'FreestreamWindSpeed'].to_list()
     inputs = inputs + case_df.loc[delay_slice, f'FreestreamWindDir'].to_list()
     return time, inputs
 

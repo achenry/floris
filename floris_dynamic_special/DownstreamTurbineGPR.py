@@ -34,19 +34,30 @@ GP_CONSTANTS = {'PROPORTION_TRAINING_DATA': 0.85,
                 'PLOT_DATA': True,
                 'SIMULATE_DATASET_INDICES': [0],
                 'MAX_TRAINING_SIZE': 100,
-                'FLORIS_DIR': './2turb_floris_input.json',
                 'UPSTREAM_RADIUS': 1000,
                 'BATCH_SIZE': 10
 }
 
 if sys.platform == 'darwin':
-    SAVE_DIR = './2turb_wake_field_cases'
+    FARM_LAYOUT = '2turb'
+    SAVE_DIR = f'./{FARM_LAYOUT}_wake_field_cases'
+    FLORIS_DIR = f'./{FARM_LAYOUT}_floris_input.json'
     DATA_DIR = './data'
     FIG_DIR = './figs'
 elif sys.platform == 'linux':
-    SAVE_DIR = '/scratch/ahenry/2turb_wake_field_cases'
+    FARM_LAYOUT = '9turb'
+    SAVE_DIR = f'/scratch/ahenry/{FARM_LAYOUT}_wake_field_cases'
+    FLORIS_DIR = f'./{FARM_LAYOUT}_floris_input.json'
     DATA_DIR = '/scratch/ahenry/data'
     FIG_DIR = '/scratch/ahenry/figs'
+
+# TODO
+# 1) generate datasets with layout as in Jean's SOWFA data, test and plot on mac for 2 turb case, run and save on eagle for 9 turb case
+# 2) add noise to training data measurements
+# 3) formulate and implement exploration maximization algorithm
+# 4) implement Matern kernel
+
+# 5) Simulate GP vs true predictions for all datasets
 
 class DownstreamTurbineGPR:
     def __init__(self, kernel, optimizer, X_scalar, y_scalar, max_training_size, n_inputs, n_outputs, turbine_index, upstream_turbine_indices, model_type):
@@ -118,6 +129,7 @@ class DownstreamTurbineGPR:
         
         # system_fi.reinitialize_flow_field(wind_speed=time_step_data['FreestreamWindSpeed'], wind_direction=time_step_data['FreestreamWindDir'], sim_time=sim_time)
         
+        upstream_wind_speeds = [time_step_data[f'TurbineWindSpeeds_{t}'] for t in self.upstream_turbine_indices]
         upstream_yaw_angles = [time_step_data[f'YawAngles_{t}'] for t in self.upstream_turbine_indices]
         upstream_ax_ind_factors = [time_step_data[f'AxIndFactors_{t}'] for t in self.upstream_turbine_indices]
         
@@ -148,6 +160,22 @@ class DownstreamTurbineGPR:
             return np.nan, np.nan, np.nan
      
     def simulate(self, simulation_df, system_fi, model_fi=None, floris_dir=GP_CONSTANTS['FLORIS_DIR'], model_type=GP_CONSTANTS['MODEL_TYPE'], k_delay=GP_CONSTANTS['K_DELAY'], dt=GP_CONSTANTS['K_DELAY']):
+        """_summary_
+        for given time-series of freestream-wind speed and open-loop axIndFactors and YawAngles, simulate the true vs. GP-predicted effective wind speed at this downstream turbine
+
+        Args:
+            simulation_df (_type_): _description_
+            system_fi (_type_): _description_
+            model_fi (_type_, optional): _description_. Defaults to None.
+            floris_dir (_type_, optional): _description_. Defaults to GP_CONSTANTS['FLORIS_DIR'].
+            model_type (_type_, optional): _description_. Defaults to GP_CONSTANTS['MODEL_TYPE'].
+            k_delay (_type_, optional): _description_. Defaults to GP_CONSTANTS['K_DELAY'].
+            dt (_type_, optional): _description_. Defaults to GP_CONSTANTS['K_DELAY'].
+
+        Returns:
+            _type_: _description_
+        """
+        
         y_true = []
         y_pred = []
         y_std = []
@@ -223,9 +251,11 @@ def get_data(system_fi, model_type=GP_CONSTANTS['MODEL_TYPE'], k_delay=GP_CONSTA
     plotting_ds_turbine_index = system_fi.downstream_turbine_indices[0]
     plotting_us_turbine_index = system_fi.upstream_turbine_indices[0]
     
-    current_input_labels = ['Time', 'FreestreamWindSpeed', 'FreestreamWindDir'] \
-        + [f'YawAngles_{t}' for t in system_fi.upstream_turbine_indices] \
+    # + ['FreestreamWindSpeed'] \
+    current_input_labels = ['Time'] + ['FreestreamWindDir'] \
+    + [f'TurbineWindSpeeds_{t}' for t in system_fi.upstream_turbine_indices] \
         + [f'AxIndFactors_{t}' for t in system_fi.upstream_turbine_indices] \
+        + [f'YawAngles_{t}' for t in system_fi.upstream_turbine_indices] \
         + [f'TurbineWindSpeeds_{t}' for t in system_fi.downstream_turbine_indices]
         
     if collect_raw_data_bool:
@@ -235,10 +265,11 @@ def get_data(system_fi, model_type=GP_CONSTANTS['MODEL_TYPE'], k_delay=GP_CONSTA
         if plot_data_bool:
             plotting_df_idx = [0, 1]
             plotting_dfs = [wake_field_dfs[df_idx] for df_idx in plotting_df_idx]
-            input_types = [f'AxIndFactors_{plotting_us_turbine_index}', 
+            # 'FreestreamWindSpeed', 
+            input_types = ['FreestreamWindDir', 
+                           f'TurbineWindSpeeds_{plotting_us_turbine_index}',
+                           f'AxIndFactors_{plotting_us_turbine_index}', 
                            f'YawAngles_{plotting_us_turbine_index}',
-                            'FreestreamWindSpeed', 
-                            'FreestreamWindDir', 
                            f'TurbineWindSpeeds_{plotting_ds_turbine_index}', 
                            f'TurbineWindDirs_{plotting_ds_turbine_index}']
             
@@ -292,7 +323,7 @@ def init_gprs(system_fi, X_scalar, y_scalar, input_labels, max_training_size=GP_
     ## GENERATE GP MODELS FOR EACH DOWNSTREAM TURBINE'S WIND SPEED
     gprs = []
     for ds_t_idx in system_fi.downstream_turbine_indices:
-        # include all turbines with upstream radius of this one    
+        # include all turbines with upstream radius of this one TODO check 1 row for 9turb case
         upstream_turbine_indices = [us_t_idx for us_t_idx in system_fi.upstream_turbine_indices 
                                     if norm([system_fi.floris.farm.turbine_map.coords[us_t_idx].x1 - system_fi.floris.farm.turbine_map.coords[ds_t_idx].x1,
                                              system_fi.floris.farm.turbine_map.coords[us_t_idx].x3 - system_fi.floris.farm.turbine_map.coords[ds_t_idx].x3], ord=2)
