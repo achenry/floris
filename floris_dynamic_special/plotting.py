@@ -31,6 +31,20 @@ def plot_prediction_vs_input(ax, gpr_fit, inputs, input_labels, X_norm, y_norm, 
         # ax[ax_idx, d].legend()
     plt.subplots_adjust(wspace=0.6, hspace=0.4)
 
+def plot_training_data(measurements_df, animated=False):
+
+    inputs = [inp for inp in measurements_df.columns
+              if any(inp_type in inp
+                     for inp_type in ['TurbineWindSpeeds', 'YawAngles', 'AxIndFactors'])]
+    fig, ax = plt.subplots(1, len(inputs), figsize=(49, 49))
+    # fig, ax = plt.subplots(1, 1, figsize=(35, 49))
+    ax = ax.flatten()
+    for i, inp in enumerate(inputs):
+        ax[i].scatter(np.ones(len(measurements_df[inp].index)), measurements_df[inp])
+        ax[i].set(title=inp)
+
+    fig.show()
+
 def plot_prediction_vs_time(ax, time, X_ts, y_ts):
     ax_idx = 0
     for input_idx, (input_label, input_ts) in enumerate(X_ts.items()):
@@ -93,3 +107,17 @@ def plot_raw_measurements_vs_time(ax, plotting_dfs, input_types):
             
             ax[-1].set(xlabel='Time [s]')
     plt.subplots_adjust(wspace=0.6, hspace=0.4)
+
+def plot_measurements(full_offline_measurements_df):
+    # plot noisy vs. noise-free measurements of Turbine Wind Speed
+    fig, ax = plt.subplots(1, len(system_fi.floris.farm.turbines))
+    for t_idx in range(len(system_fi.floris.farm.turbines)):
+        ax[t_idx].scatter(full_offline_measurements_df['Time'],
+                          full_offline_measurements_df[f'TurbineWindSpeeds_{t_idx}'],
+                          color='red', label='True')
+        ax[t_idx].scatter(noisy_measurements_df['Time'],
+                          noisy_measurements_df[f'TurbineWindSpeeds_{t_idx}'],
+                          color='blue', label='Noisy')
+        ax[t_idx].set(title=f'Turbine {t_idx} Wind Speed [m/s] measurements', xlabel='Time [s]')
+    ax[0].legend()
+    plt.show()

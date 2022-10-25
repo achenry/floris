@@ -223,13 +223,13 @@
     "name": "wake_default",
     "description": "wake",
     "properties": {
-      "velocity_model": "gauss_legacy",
+      "velocity_model": "jensen",
       "turbulence_model": "crespo_hernandez",
       "deflection_model": "gauss",
       "combination_model": "sosfs",
       "parameters": {
         "wake_velocity_parameters": {
-              "cc": {
+            "cc": {
                 "a_s": 0.179367259,
                 "b_s": 0.0118889215,
                 "c_s1": 0.0563691592,
@@ -260,7 +260,7 @@
               "dm": 1.0,
               "ka": 0.38,
               "kb": 0.004,
-              "use_secondary_steering":true
+              "use_secondary_steering":false
           },
           "jimenez": {
             "ad": 0.0,
