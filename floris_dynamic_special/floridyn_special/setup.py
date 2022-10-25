@@ -18,7 +18,7 @@ from setuptools import setup, find_packages
 
 
 # Package meta-data.
-NAME = "DYNFLORIS"
+NAME = "floridyn_special"
 DESCRIPTION = "A dynamiccontrols-oriented engineering wake model."
 URL = "https://github.com/NREL/FLORIS"
 EMAIL = "rafael.mudafort@nrel.gov"
@@ -34,11 +34,14 @@ REQUIRED = [
     "numpy>=1.20",
     "scipy>=1.1",
     "seaborn",
-
+	"sklearn",
+    "pyproj",
     # tools
     "matplotlib>=3",
     "pandas",
     "shapely",
+
+    "floris>=2.4",
 
     # utilities
     "coloredlogs>=10.0",
@@ -51,7 +54,7 @@ EXTRAS = {
 }
 
 ROOT = Path(__file__).parent
-with open(ROOT / "floris" / "version.py") as version_file:
+with open(ROOT / "floridyn_special" / "version.py") as version_file:
     VERSION = version_file.read().strip()
 
 setup(
@@ -65,7 +68,7 @@ setup(
     python_requires=REQUIRES_PYTHON,
     url=URL,
     packages=find_packages(exclude=["tests", "*.tests", "*.tests.*", "tests.*"]),
-    package_data={'floris': ['turbine_library/*.yaml', 'simulation/wake_velocity/turbopark_lookup_table.mat']},
+    package_data={'floridyn_special': ['turbine_library/*.yaml', 'simulation/wake_velocity/turbopark_lookup_table.mat']},
     install_requires=REQUIRED,
     extras_require=EXTRAS,
     include_package_data=True,
