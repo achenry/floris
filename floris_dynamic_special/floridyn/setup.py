@@ -18,7 +18,7 @@ from setuptools import setup, find_packages
 
 
 # Package meta-data.
-NAME = "floridyn_special"
+NAME = "floridyn"
 DESCRIPTION = "A dynamiccontrols-oriented engineering wake model."
 URL = "https://github.com/NREL/FLORIS"
 EMAIL = "rafael.mudafort@nrel.gov"
@@ -47,14 +47,14 @@ REQUIRED = [
     "coloredlogs>=10.0",
 ]
 
-# What packages are optional?
+# What packages are optional?floridyn-special
 EXTRAS = {
     "docs": {"readthedocs-sphinx-ext", "Sphinx", "sphinxcontrib-napoleon"},
     "develop": {"pytest", "coverage[toml]", "pre-commit", "black", "isort"},
 }
 
 ROOT = Path(__file__).parent
-with open(ROOT / "floridyn_special" / "version.py") as version_file:
+with open(ROOT / "floridyn" / "version.py") as version_file:
     VERSION = version_file.read().strip()
 
 setup(
@@ -67,8 +67,8 @@ setup(
     author_email=EMAIL,
     python_requires=REQUIRES_PYTHON,
     url=URL,
-    packages=find_packages(exclude=["tests", "*.tests", "*.tests.*", "tests.*"]),
-    package_data={'floridyn_special': ['turbine_library/*.yaml', 'simulation/wake_velocity/turbopark_lookup_table.mat']},
+    packages=['floridyn'],#find_packages(exclude=["tests", "*.tests", "*.tests.*", "tests.*"]),
+    package_data={'floridyn': ['turbine_library/*.yaml', 'simulation/wake_velocity/turbopark_lookup_table.mat']},
     install_requires=REQUIRED,
     extras_require=EXTRAS,
     include_package_data=True,

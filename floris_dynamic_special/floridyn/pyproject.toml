@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 # Coverage.py configuration file
 # https://coverage.readthedocs.io/en/latest/config.html
 branch = true
-source = "floridyn_special/*"
+source = "floridyn/*"
 omit = [
     "setup.py",
     "tests/*"
@@ -56,7 +56,7 @@ known_third_party = [
     "scipy",
     "attr"
 ]
-known_first_party = ["floridyn_special"]
+known_first_party = ["floridyn"]
 combine_as_imports = true
 force_grid_wrap = 0
 include_trailing_comma = true
