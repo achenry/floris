@@ -180,7 +180,7 @@ class DownstreamTurbineGPR:
         # OPTION A:
         # select MAX_TRAINING_SIZE datapoints from self.X_train_all at random
 
-        # OPTION B: TODO check that enough datapoints exist in X_train to remove batch_size
+        # OPTION B:
         # drop BATCH_SIZE datapoints from self.X_train at random and add BATCH_SIZE points with highest predicted variance from new available X_train_new
         keep_idx = list(range(self.X_train.shape[0]))
         np.random.shuffle(keep_idx)
@@ -189,12 +189,14 @@ class DownstreamTurbineGPR:
             drop_idx.append(keep_idx.pop())
         # drop_idx = np.floor(np.random.uniform(0, 1, n_datapoints) * self.X_train.shape[0]).astype(int)
         # keep_idx = [i for i in range(self.X_train.shape[0]) if i not in drop_idx]
-        dropped_X_train = self.X_train[drop_idx, :]
-        dropped_y_train = self.y_train[drop_idx, :]
+        # dropped_X_train = self.X_train[drop_idx, :]
+        # dropped_y_train = self.y_train[drop_idx, :]
         keep_X_train = self.X_train[keep_idx, :]
         keep_y_train = self.y_train[keep_idx, :]
 
-        if keep_X_train.shape[0] < self.max_training_size - n_datapoints:
+        try:
+            assert keep_X_train.shape[0] == self.max_training_size - n_datapoints
+        except Exception:
             print('oh no')
 
         self.X_train = keep_X_train
@@ -210,17 +212,24 @@ class DownstreamTurbineGPR:
             _, std = self.gpr.predict([X], return_std=True)
             new_dps.append((X, y, std[0], k))
 
+        try:
+            assert len(new_dps) >= n_datapoints
+        except Exception:
+            print('oh no')
+
         # order from highest to lowest predicted standard deviation
         new_Xy_train = sorted(new_dps, key=lambda tup: tup[2], reverse=True)[:n_datapoints]
         new_X_train = np.vstack([tup[0] for tup in new_Xy_train])
         new_y_train = np.vstack([tup[1] for tup in new_Xy_train])
         new_k_to_add = [tup[3] for tup in new_Xy_train]
 
-        if len(keep_idx) + len(new_Xy_train) < self.max_training_size:
-            print('oh no')
-
         # add to training data
         self.add_data(new_X_train, new_y_train, new_k_to_add, is_online=False)
+
+        try:
+            assert self.X_train.shape[0] == self.max_training_size
+        except Exception:
+            print('oh no')
 
 
     def get_domain_window(self, x, window_size=0.1, n_datapoints=10):

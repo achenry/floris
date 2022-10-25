@@ -294,8 +294,8 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx, X_scala
                     min_k_needed.update(list(
                         k_buffered - (effective_dk * GP_CONSTANTS['K_DELAY'])))
 
-                    # if not history_exists:
-                    if len(k_to_add) < batch_size:
+                    # if not history_exists, want to have at least 2 * the required batch of new datapoints to choose from
+                    if len(k_to_add) < 2 * batch_size:
                         print(f'Not enough history available to fit {gp_idx} th GP with batch of samples, adding to buffer instead')
                         continue
 
@@ -308,8 +308,8 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx, X_scala
                         = gprs[gp_idx].prepare_data(online_measurements_df, k_to_add, effective_dk,
                                                     y_modeled=[y_modeled[k][gp_idx] for k in k_to_add.to_numpy()],
                                                     k_delay=k_delay)
-
-                    gprs[gp_idx].choose_new_data(potential_X_train_new, potential_y_train_new, k_to_add)
+                    assert potential_X_train_new.shape[0] == len(k_to_add)
+                    gprs[gp_idx].choose_new_data(potential_X_train_new, potential_y_train_new, k_to_add, n_datapoints=batch_size)
 
                     # refit gp
                     if FIT_ONLINE:
