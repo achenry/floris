@@ -8,7 +8,7 @@
 # Formulate A, Bu, Bd matrices for wind farm (Lucy paper)
 
 from sklearn.metrics import jaccard_score
-import floridyn_special as fi
+import floridyn as fi
 from scipy.optimize import minimize
 import numpy as np
 import matplotlib.pyplot as plt

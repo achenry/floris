@@ -1,6 +1,6 @@
-from floridyn_special.tools.floris_interface import FlorisInterface as DynFlorisInterface
+from floridyn.tools.floris_interface import FlorisInterface as DynFlorisInterface
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, ConstantKernel
+
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -10,7 +10,6 @@ from plotting import plot_prediction_vs_input, plot_prediction_vs_time, plot_mea
 from preprocessing import get_paths, read_datasets, collect_raw_data, generate_input_labels, generate_input_vector, split_all_data
 from numpy.linalg import norm
 import sys
-import pandas as pd
 
 # GOAL: learn propagation speed
 # GOAL: changers in ax_ind factor of upstream turbines -> changes in effective wind speed at downstream turbines
@@ -34,6 +33,12 @@ GP_CONSTANTS = {'PROPORTION_TRAINING_DATA': 0.8,
                 'STD_THRESHOLD': 0.1
 }
 
+N_TEST_POINTS_PER_COORD = 2
+AX_IND_FACTOR_TEST_POINTS = np.linspace(0.11, 0.33, N_TEST_POINTS_PER_COORD)
+YAW_ANGLE_TEST_POINTS = np.linspace(-15, 15, N_TEST_POINTS_PER_COORD)
+UPSTREAM_WIND_SPEED_TEST_POINTS = np.linspace(8, 12, N_TEST_POINTS_PER_COORD)
+UPSTREAM_WIND_DIR_TEST_POINTS = np.linspace(250, 270, N_TEST_POINTS_PER_COORD)
+
 if sys.platform == 'darwin':
     FARM_LAYOUT = '2turb'
     SAVE_DIR = f'./{FARM_LAYOUT}_wake_field_cases'
@@ -43,29 +48,35 @@ if sys.platform == 'darwin':
     FIG_DIR = './figs'
 elif sys.platform == 'linux':
     FARM_LAYOUT = '9turb'
-    SAVE_DIR = f'/scratch/ahenry/{FARM_LAYOUT}_wake_field_cases'
+    SAVE_DIR = f'/scratch/alpine/aohe7145/{FARM_LAYOUT}_wake_field_cases'
     FLORIS_DIR = f'./{FARM_LAYOUT}_floris_input.json'
     BASE_MODEL_FLORIS_DIR = f'./{FARM_LAYOUT}_base_model_floris_input.json'
-    DATA_DIR = '/scratch/ahenry/data'
-    FIG_DIR = '/scratch/ahenry/figs'
+    DATA_DIR = '/scratch/alpine/aohe7145/wake_gp/data'
+    FIG_DIR = '/scratch/alpine/aohe7145/wake_gp/figs'
 
 # TODO
 # 1) generate datasets with layout as in Jean's SOWFA data, test and plot on mac for 2 turb case, run and save on eagle for 9 turb case
-# 2) add noise to training data measurements
 # 3) formulate and implement exploration maximization algorithm
-# 4) implement Matern kernel
-
-# 5) Simulate GP vs true predictions for all datasets
 
 class DownstreamTurbineGPR:
-    def __init__(self, kernel, optimizer, X_scalar, y_scalar, max_training_size, n_inputs, n_outputs, turbine_index, upstream_turbine_indices, model_type):
-        self.n_inputs = n_inputs
+    def __init__(self, kernel, optimizer, X_scalar, y_scalar,
+                 max_training_size, input_labels, n_outputs, turbine_index,
+                 upstream_turbine_indices, model_type):
+        self.input_labels = input_labels
+        self.n_inputs = len(self.input_labels)
         self.n_outputs = n_outputs
-        self.X_train = np.zeros((0, n_inputs))
-        self.y_train = np.zeros((0, n_outputs))
+        self.X_train = np.zeros((0, self.n_inputs))
+        self.y_train = np.zeros((0, self.n_outputs))
+        self.k_train = []
+
+        self.X_train_replay = np.zeros((0, self.n_inputs))
+        self.y_train_replay = np.zeros((0, self.n_outputs))
+        self.k_train_replay = []
+
         self.X_scalar = X_scalar
         self.y_scalar = y_scalar
         self.max_training_size = max_training_size
+        self.max_replay_size = max_training_size
         self.gpr = GaussianProcessRegressor(
             kernel=kernel,
             optimizer=optimizer, 
@@ -74,7 +85,13 @@ class DownstreamTurbineGPR:
         self.turbine_index = turbine_index
         self.upstream_turbine_indices = upstream_turbine_indices
         self.model_type = model_type
-        self.k_added = []
+        self.X_test = None
+        # self.k_added = []
+
+    def compute_test_std(self):
+        _, test_std = self.gpr.predict(self.X_test, return_std=True)
+        test_std = self.y_scalar.inverse_transform(test_std)
+        return test_std / self.X_test.shape[0]
 
     def compute_effective_dk(self, system_fi, current_measurement_rows, k_delay=GP_CONSTANTS['K_DELAY'],
                              dt=GP_CONSTANTS['DT']):
@@ -127,15 +144,19 @@ class DownstreamTurbineGPR:
 
         return X, y
 
-    def add_data(self, new_X_train, new_y_train, k_to_add, is_online):
+    def add_data(self, new_X_train, new_y_train, new_k_train, is_online):
 
         self.X_train = np.vstack([self.X_train, new_X_train])[-self.max_training_size if self.max_training_size > -1
                                                               else 0:, :]
         self.y_train = np.vstack([self.y_train, new_y_train])[-self.max_training_size if self.max_training_size > -1
                                                               else 0:, :]
+        assert self.X_train.shape[0] == self.max_training_size
 
         if is_online:
-            self.k_added = self.k_added + list(k_to_add)
+            self.k_train = (self.k_train + list(new_k_train))[-self.max_training_size if self.max_training_size > -1
+                                                              else 0:]
+        else:
+            self.k_train = [-1] * self.X_train.shape[0]
     
     def fit(self):
         return self.gpr.fit(self.X_train, self.y_train)
@@ -150,8 +171,8 @@ class DownstreamTurbineGPR:
         time_step_data = measurements_df.iloc[-1]
         k = int(time_step_data['Time'] // dt) # measurements_df.index[-1]
         
-        upstream_yaw_angles = [time_step_data[f'YawAngles_{t}'] for t in self.upstream_turbine_indices]
-        upstream_ax_ind_factors = [time_step_data[f'AxIndFactors_{t}'] for t in self.upstream_turbine_indices]
+        # upstream_yaw_angles = [time_step_data[f'YawAngles_{t}'] for t in self.upstream_turbine_indices]
+        # upstream_ax_ind_factors = [time_step_data[f'AxIndFactors_{t}'] for t in self.upstream_turbine_indices]
 
         effective_dk = self.compute_effective_dk(system_fi, time_step_data, k_delay=k_delay, dt=dt)
         if k >= (k_delay * effective_dk):
@@ -168,7 +189,8 @@ class DownstreamTurbineGPR:
         else:
             return np.nan, np.nan
 
-    def choose_new_data(self, X_train_potential, y_train_potential, k_to_add_potential, n_datapoints=GP_CONSTANTS['BATCH_SIZE']):
+    def choose_new_data(self, X_train_potential, y_train_potential, k_train_potential,
+                        n_datapoints=GP_CONSTANTS['BATCH_SIZE']):
         """
 
         Args:
@@ -182,55 +204,73 @@ class DownstreamTurbineGPR:
 
         # OPTION B:
         # drop BATCH_SIZE datapoints from self.X_train at random and add BATCH_SIZE points with highest predicted variance from new available X_train_new
+        assert self.X_train.shape[0] == self.max_training_size
+
         keep_idx = list(range(self.X_train.shape[0]))
         np.random.shuffle(keep_idx)
         drop_idx = []
-        for i in range(n_datapoints):
+        for _ in range(n_datapoints):
             drop_idx.append(keep_idx.pop())
         # drop_idx = np.floor(np.random.uniform(0, 1, n_datapoints) * self.X_train.shape[0]).astype(int)
         # keep_idx = [i for i in range(self.X_train.shape[0]) if i not in drop_idx]
-        # dropped_X_train = self.X_train[drop_idx, :]
-        # dropped_y_train = self.y_train[drop_idx, :]
-        keep_X_train = self.X_train[keep_idx, :]
-        keep_y_train = self.y_train[keep_idx, :]
+        assert len(drop_idx) + len(keep_idx)
 
-        try:
-            assert keep_X_train.shape[0] == self.max_training_size - n_datapoints
-        except Exception:
-            print('oh no')
+        dropped_X_train = self.X_train[drop_idx, :]
+        dropped_y_train = self.y_train[drop_idx, :]
+        dropped_k_train = [self.k_train[i] for i in drop_idx]
 
-        self.X_train = keep_X_train
-        self.y_train = keep_y_train
+        self.X_train = self.X_train[keep_idx, :]
+        self.y_train = self.y_train[keep_idx, :]
+        self.k_train = [self.k_train[i] for i in keep_idx]
         self.fit()
+
+        self.X_train_replay = np.vstack([self.X_train_replay, X_train_potential, dropped_X_train])
+        self.y_train_replay = np.vstack([self.y_train_replay, y_train_potential, dropped_y_train])
+        self.k_train_replay = self.k_train_replay + list(k_train_potential) + dropped_k_train
 
         # predict variance for each of new candidate datapoints
         new_dps = []
-        for i in range(X_train_potential.shape[0]):
-            X = X_train_potential[i, :]
-            y = y_train_potential[i]
-            k = k_to_add_potential.iloc[i]
+        for i, k in enumerate(self.k_train_replay):
+            X = self.X_train_replay[i, :]
+            y = self.y_train_replay[i]
             _, std = self.gpr.predict([X], return_std=True)
             new_dps.append((X, y, std[0], k))
 
-        try:
-            assert len(new_dps) >= n_datapoints
-        except Exception:
-            print('oh no')
+        assert len(new_dps) >= n_datapoints
 
         # order from highest to lowest predicted standard deviation
-        new_Xy_train = sorted(new_dps, key=lambda tup: tup[2], reverse=True)[:n_datapoints]
-        new_X_train = np.vstack([tup[0] for tup in new_Xy_train])
-        new_y_train = np.vstack([tup[1] for tup in new_Xy_train])
-        new_k_to_add = [tup[3] for tup in new_Xy_train]
+        new_std_train = [tup[2] for tup in new_dps]
+        p_choice = new_std_train / sum(new_std_train)
+
+        idx_choice = np.random.choice(list(range(len(new_dps))), n_datapoints, replace=False, p=p_choice)
+
+        # remove from replay data that has been selected
+        self.X_train_replay = self.X_train_replay[~idx_choice]
+        self.y_train_replay = self.y_train_replay[~idx_choice]
+        self.k_train_replay = [k for i, k in enumerate(self.k_train_replay) if i not in idx_choice]
 
         # add to training data
-        self.add_data(new_X_train, new_y_train, new_k_to_add, is_online=False)
+        # new_Xy_train = sorted(new_dps, key=lambda tup: tup[2], reverse=True)[:n_datapoints]
+        new_Xy_train = [new_dps[i] for i in idx_choice]
+        new_X_train = np.vstack([tup[0] for tup in new_Xy_train])
+        new_y_train = np.vstack([tup[1] for tup in new_Xy_train])
+        new_k_train = [tup[3] for tup in new_Xy_train]
 
-        try:
-            assert self.X_train.shape[0] == self.max_training_size
-        except Exception:
-            print('oh no')
+        assert new_X_train.shape[0] == n_datapoints
 
+        self.add_data(new_X_train, new_y_train, new_k_train, is_online=True)
+
+        assert self.X_train.shape[0] == self.max_training_size
+
+        # truncate the replay buffer
+        shuffle_idx = list(range(self.X_train_replay.shape[0]))
+        np.random.shuffle(shuffle_idx)
+        shuffle_idx = shuffle_idx[:self.max_replay_size]
+        self.X_train_replay = self.X_train_replay[shuffle_idx, :]
+        self.y_train_replay = self.y_train_replay[shuffle_idx, :]
+        self.k_train_replay = [self.k_train_replay[i] for i in shuffle_idx]
+
+        assert self.X_train.shape[0] == self.max_training_size
 
     def get_domain_window(self, x, window_size=0.1, n_datapoints=10):
         x_window = []
@@ -422,7 +462,7 @@ def get_data(measurements_dfs, system_fi, model_type=GP_CONSTANTS['MODEL_TYPE'],
         measurements_dfs = mmry_dict['measurements_dfs']
 
     input_labels = generate_input_labels(system_fi.upstream_turbine_indices, k_delay)
-    
+
     ## INSPECT DATA
     if plot_data_bool:
         # fig = plt.figure(constrained_layout=True)
@@ -438,26 +478,50 @@ def get_data(measurements_dfs, system_fi, model_type=GP_CONSTANTS['MODEL_TYPE'],
         
     return time, X, y, current_input_labels, input_labels
 
-def init_gprs(system_fi, X_scalar, y_scalar, input_labels, max_training_size=GP_CONSTANTS['MAX_TRAINING_SIZE']):
+def init_gprs(system_fi, X_scalar, y_scalar, input_labels, kernel, k_delay, max_training_size=GP_CONSTANTS['MAX_TRAINING_SIZE']):
     ## GENERATE GP MODELS FOR EACH DOWNSTREAM TURBINE'S WIND SPEED
     gprs = []
     for ds_t_idx in system_fi.downstream_turbine_indices:
         # include all turbines with upstream radius of this one
         upstream_turbine_indices = [us_t_idx for us_t_idx in system_fi.upstream_turbine_indices 
                                     if norm([system_fi.floris.farm.turbine_map.coords[us_t_idx].x1 - system_fi.floris.farm.turbine_map.coords[ds_t_idx].x1,
-                                             system_fi.floris.farm.turbine_map.coords[us_t_idx].x3 - system_fi.floris.farm.turbine_map.coords[ds_t_idx].x3], ord=2)
+                                             system_fi.floris.farm.turbine_map.coords[us_t_idx].x2 - system_fi.floris.farm.turbine_map.coords[ds_t_idx].x2
+                                             ], ord=2)
                                     <= GP_CONSTANTS['UPSTREAM_RADIUS']]
          
         # PARAMETERIZE GAUSSIAN PROCESS REGRESSOR
-        kernel = ConstantKernel(constant_value=5) * RBF(length_scale=1) # DotProduct() + WhiteKernel()
+         # DotProduct() + WhiteKernel()
+        turbine_input_labels = [l for l in input_labels
+                                if 'TurbineWindSpeeds' not in l or int(l.split('_')[1]) in upstream_turbine_indices]
+
         gpr = DownstreamTurbineGPR(kernel, optimizer,
                                    X_scalar, y_scalar,
                                    max_training_size=max_training_size, 
-                                   n_inputs=len(input_labels), n_outputs=1, 
+                                   input_labels=turbine_input_labels, n_outputs=1,
                                    turbine_index=ds_t_idx,
                                    upstream_turbine_indices=upstream_turbine_indices,
                                    model_type=GP_CONSTANTS['MODEL_TYPE'])
-        
+
+        if os.path.exists(os.path.join(DATA_DIR, f'X_test_ds-{ds_t_idx}_kdelay-{k_delay}')):
+            with open(os.path.join(DATA_DIR, f'X_test_ds-{ds_t_idx}_kdelay-{k_delay}'), 'rb') as f:
+                gpr.X_test = pickle.load(f)
+        else:
+            test_vectors = []
+            for l in turbine_input_labels:
+                if 'AxIndFactors' in l:
+                    test_vectors.append(AX_IND_FACTOR_TEST_POINTS)
+                elif 'YawAngles' in l:
+                    test_vectors.append(YAW_ANGLE_TEST_POINTS)
+                elif 'TurbineWindSpeeds' in l:
+                    test_vectors.append(UPSTREAM_WIND_SPEED_TEST_POINTS)
+                elif 'FreestreamWindDir' in l:
+                    test_vectors.append(UPSTREAM_WIND_DIR_TEST_POINTS)
+
+            gpr.X_test = gpr.X_scalar.transform(np.array(np.meshgrid(*test_vectors, copy=False)).T.reshape(-1, len(turbine_input_labels)))
+
+            with open(os.path.join(DATA_DIR, f'X_test_ds-{ds_t_idx}_kdelay-{k_delay}'), 'wb') as f:
+                pickle.dump(gpr.X_test, f)
+
         gprs.append(gpr)
     return gprs
 

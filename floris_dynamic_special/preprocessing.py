@@ -13,7 +13,8 @@ def get_paths(save_dir, df_indices):
         for filename in files:
             if len(paths) == n_cases:
                 break
-            if 'case' in filename and (df_indices is None or (int(filename[-5]) in df_indices)):
+            if 'case' in filename and 'csv' in filename and (df_indices is None or
+                                                             (int(filename.split('_')[-1].split('.')[0]) in df_indices)):
                 paths.append(os.path.join(root, filename))
         if len(paths) == n_cases:
             break

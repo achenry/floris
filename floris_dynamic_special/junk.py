@@ -54,3 +54,11 @@ def add_data(self, measurements_df, system_fi, k_delay=GP_CONSTANTS['K_DELAY'], 
 	# measurements_df.drop(measurements_df.loc[measurements_df['IsAdded']], inplace=True)
 
 	self._add_data(X, y)
+
+# def compute_test_r2(self):
+#     test_rmse = []
+#     for X_test in self.test_points:
+#         y_pred, _ = self.gpr.predict(X_test, return_std=True)
+#         np.sqrt(np.nanmean(np.square(np.subtract(y_true, y_pred))))
+#         test_rmse.append(rmse)
+#     return test_rmse

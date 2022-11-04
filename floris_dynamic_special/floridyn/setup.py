@@ -53,13 +53,9 @@ EXTRAS = {
     "develop": {"pytest", "coverage[toml]", "pre-commit", "black", "isort"},
 }
 
-ROOT = Path(__file__).parent
-with open(ROOT / "floridyn" / "version.py") as version_file:
-    VERSION = version_file.read().strip()
-
 setup(
     name=NAME,
-    version=VERSION,
+    version=1.1,
     description=DESCRIPTION,
     long_description=DESCRIPTION,
     long_description_content_type="text/markdown",

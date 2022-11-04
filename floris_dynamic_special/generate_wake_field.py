@@ -14,7 +14,7 @@ Need csv containing 'true' wake characteristics at each turbine (variables) at e
 import matplotlib.pyplot as plt
 # import matplotlib.animation as ani
 import numpy as np
-from floridyn_special import tools as wfct # Incoming con
+from floridyn import tools as wfct # Incoming con
 import pandas as pd
 from weis.aeroelasticse.CaseGen_General import CaseGen_General
 # from floridyn_special.tools.visualization import visualize_cut_plane
@@ -65,12 +65,28 @@ WD_TI = 0
 DEBUG = False
 
 # hold constant over simulation time span
-FREESTREAM_WIND_SPEEDS = [step_change([val], TOTAL_TIME, DT) for val in ([8] if DEBUG else [8, 12, 16])]
+FREESTREAM_WIND_SPEEDS = [step_change([val], TOTAL_TIME, DT) for val in ([8] if DEBUG else [8, 10, 12])]
 FREESTREAM_WIND_DIRS = [step_change([val], TOTAL_TIME, DT) for val in ([260] if DEBUG else [250, 260, 270])]
 
 # change over course of single simulation to learn how wake fields propagate over time
-YAW_ANGLES = [step_change([0.0, 7.5, 15], TOTAL_TIME, DT)] if DEBUG else [step_change([0.0, 7.5, 15], TOTAL_TIME, DT), step_change([15, 7.5, 0.0], TOTAL_TIME, DT), step_change([7.5, 15, 0.0], TOTAL_TIME, DT)]
-AX_IND_FACTORS = [step_change([0.11, 0.22, 0.33], TOTAL_TIME, DT)] if DEBUG else [step_change([0.11, 0.22, 0.33], TOTAL_TIME, DT), step_change([0.33, 0.22, 0.11], TOTAL_TIME, DT), step_change([0.22, 0.33, 0.11], TOTAL_TIME, DT)]
+# TODO add cases with constant yaw angle, ax ind factor, incur changes at different times by changing number vals
+YAW_ANGLES = [step_change([0.0, 7.5, 15], TOTAL_TIME, DT)] if DEBUG else \
+    [step_change([-20, -15, -10], TOTAL_TIME, DT),
+    step_change([-10, -15, -20], TOTAL_TIME, DT),
+    step_change([20, 15, 10], TOTAL_TIME, DT),
+    step_change([10, 15, 20], TOTAL_TIME, DT),
+     step_change([-10, 0, 10], TOTAL_TIME, DT),
+     step_change([10, 0, -10], TOTAL_TIME, DT),
+     step_change([10], TOTAL_TIME, DT),
+     step_change([-10], TOTAL_TIME, DT),
+     step_change([0], TOTAL_TIME, DT)]
+AX_IND_FACTORS = [step_change([0.11, 0.22, 0.22, 0.33], TOTAL_TIME, DT)] if DEBUG else \
+    [step_change([0.11, 0.22, 0.22, 0.33], TOTAL_TIME, DT),
+     step_change([0.33, 0.33, 0.22, 0.11], TOTAL_TIME, DT),
+     step_change([0.22, 0.22, 0.33, 0.11], TOTAL_TIME, DT),
+     step_change([0.11], TOTAL_TIME, DT),
+     step_change([0.33], TOTAL_TIME, DT),
+     step_change([0.22], TOTAL_TIME, DT)]
 
 # **************************************** Initialization **************************************** #
 # Initialize the FLORIS interface fi
