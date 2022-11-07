@@ -31,11 +31,11 @@ module load python/3.8
 source /curc/sw/anaconda3/latest
 conda activate dynfloris-env
 
-if [[ -f "/scratch/ahenry/9turb_wake_field_cases" ]]
-then
-    rm -rf /scratch/ahenry/9turb_wake_field_cases
-fi
+#if [[ -f "/scratch/alpine/aohe7145/wake_gp/9turb_wake_field_cases" ]]
+#then
+#    rm -rf /scratch/ahenry/9turb_wake_field_cases
+#fi
 
-cd floris_dynamic_special
+cd /projects/aohe7145/projects/wake_gp/floris/floris_dynamic_special
 python generate_wake_field.py
 python main.py

@@ -121,3 +121,90 @@ def plot_measurements(full_offline_measurements_df):
         ax[t_idx].set(title=f'Turbine {t_idx} Wind Speed [m/s] measurements', xlabel='Time [s]')
     ax[0].legend()
     plt.show()
+
+
+def plot_score(system_fi, turbine_score_mean, turbine_score_std):
+    """
+   RMSE mean and std (true turbine effective wind speed vs. GP estimate) over all simulations for
+    each downstream turbine
+    Returns:
+
+    """
+    score_fig, score_ax = plt.subplots(2, 1)
+
+    for ax_idx, dataset_type in enumerate(['train', 'test']):
+        score_ax[ax_idx].errorbar(x=system_fi.downstream_turbine_indices,
+                                y=turbine_score_mean[dataset_type], yerr=turbine_score_std[dataset_type])
+        score_ax[ax_idx].set(
+            title=f'Downstream Turbine Effective Wind Speed R2 Score over all {dataset_type.capitalize()}ing Simulations [m/s]')
+
+    score_ax[-1].set(xlabel='Downstream Turbine Index')
+    return score_fig
+
+
+def plot_ts(tmax, ds_indices, simulation_results, sim_indices):
+    """
+   GP estimate, true value, noisy measurements of
+    effective wind speeds of downstream turbines vs.
+    time for one dataset
+    Returns:
+
+    """
+    time = np.arange(tmax)
+    ts_fig, ts_ax = plt.subplots(len(sim_indices['train']) + len(sim_indices['test']), 1, sharex=True, sharey=True)
+
+    ax_idx = -1
+    for i, dataset_type in enumerate(['train', 'test']):
+        for j, sim_idx in enumerate(sim_indices[dataset_type]):
+            ax_idx += 1
+            for ds_idx, ds in enumerate(ds_indices):
+                ts_ax[ax_idx].plot(time, simulation_results[dataset_type][sim_idx]['true'][:, ds_idx],
+                                   label=f'Turbine {ds} True')
+                ts_ax[ax_idx].plot(time, simulation_results[dataset_type][sim_idx]['pred'][:, ds_idx],
+                                   label=f'Turbine {ds} Predicted Mean')
+                ts_ax[ax_idx].plot(time, simulation_results[dataset_type][sim_idx]['modeled'][:, ds_idx],
+                                   label=f'Turbine {ds} Base Modeled')
+                ts_ax[ax_idx].scatter(time, simulation_results[dataset_type][sim_idx]['meas'][:, ds_idx], c='r',
+                                      label=f'Turbine {ds} Measurements')
+                # ts_ax_scatter(time, gprs[0].y_train, c='p', label='Training Outputs')
+                ts_ax[ax_idx].fill_between(time, simulation_results[dataset_type][sim_idx]['pred'][:, ds_idx]
+                                           - simulation_results[dataset_type][sim_idx]['std'][:, ds_idx],
+                                           simulation_results[dataset_type][sim_idx]['pred'][:, ds_idx]
+                                           + simulation_results[dataset_type][sim_idx]['std'][:, ds_idx],
+                                           alpha=0.1, label=f'Turbine {ds} Predicted Std. Dev.')
+
+                ts_ax[ax_idx].set(
+                    title=f'Downstream Turbine Effective Wind Speeds for {dataset_type.capitalize()}ing Simulation {j} [m/s]')
+
+    ts_ax[0].legend(loc='center left')
+    ts_ax[-1].set(xlabel='Time [s]')
+    return ts_fig
+
+
+def plot_std_evolution(tmax, ds_indices, simulation_results, sim_indices):
+    """
+    plot evolution of sum of predicted variance at grid test points for middle column downstream turbines vs online training time
+    Returns:
+
+    """
+    # for each simulation, each time gp.add_training_data is called,
+    # the predicted variance is computed for a grid of test points
+    time = np.arange(tmax)
+    std_fig, std_ax = plt.subplots(len(sim_indices['train']) + len(sim_indices['test']), 1,
+                                   sharex=True, sharey=True)
+
+    ax_idx = -1
+    for i, dataset_type in enumerate(['train', 'test']):
+        for j, sim_idx in enumerate(sim_indices[dataset_type]):
+            ax_idx += 1
+            for ds_idx, ds in enumerate(ds_indices):
+                std_ax[ax_idx].plot(time, simulation_results[dataset_type][sim_idx]['test_std'][:, ds_idx],
+                                    label=f'Turbine {ds}')
+
+                std_ax[ax_idx].set(
+                    title=f'Downstream Turbine Effective Wind Speed Standard Deviation '
+                          f'vs. Time for {dataset_type.capitalize()}ing Simulation {j} [m/s]')
+
+    std_ax[0].legend(loc='center left')
+    std_ax[-1].set(xlabel='Time [s]')
+    return std_fig

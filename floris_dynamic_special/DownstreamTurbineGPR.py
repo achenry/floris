@@ -30,10 +30,11 @@ GP_CONSTANTS = {'PROPORTION_TRAINING_DATA': 0.8,
                 'MAX_TRAINING_SIZE': 500,
                 'UPSTREAM_RADIUS': 1000,
                 'BATCH_SIZE': 10,
-                'STD_THRESHOLD': 0.1
+                'STD_THRESHOLD': 0.1,
+                'N_TEST_POINTS': 100
 }
 
-N_TEST_POINTS_PER_COORD = 2
+N_TEST_POINTS_PER_COORD = 9
 AX_IND_FACTOR_TEST_POINTS = np.linspace(0.11, 0.33, N_TEST_POINTS_PER_COORD)
 YAW_ANGLE_TEST_POINTS = np.linspace(-15, 15, N_TEST_POINTS_PER_COORD)
 UPSTREAM_WIND_SPEED_TEST_POINTS = np.linspace(8, 12, N_TEST_POINTS_PER_COORD)
@@ -90,8 +91,8 @@ class DownstreamTurbineGPR:
 
     def compute_test_std(self):
         _, test_std = self.gpr.predict(self.X_test, return_std=True)
-        test_std = self.y_scalar.inverse_transform(test_std)
-        return test_std / self.X_test.shape[0]
+        test_std = self.y_scalar.inverse_transform([test_std])
+        return np.sum(test_std)
 
     def compute_effective_dk(self, system_fi, current_measurement_rows, k_delay=GP_CONSTANTS['K_DELAY'],
                              dt=GP_CONSTANTS['DT']):
@@ -478,7 +479,8 @@ def get_data(measurements_dfs, system_fi, model_type=GP_CONSTANTS['MODEL_TYPE'],
         
     return time, X, y, current_input_labels, input_labels
 
-def init_gprs(system_fi, X_scalar, y_scalar, input_labels, kernel, k_delay, max_training_size=GP_CONSTANTS['MAX_TRAINING_SIZE']):
+def init_gprs(system_fi, X_scalar, y_scalar, input_labels, kernel, k_delay,
+              max_training_size=GP_CONSTANTS['MAX_TRAINING_SIZE'], n_test_points=GP_CONSTANTS['N_TEST_POINTS']):
     ## GENERATE GP MODELS FOR EACH DOWNSTREAM TURBINE'S WIND SPEED
     gprs = []
     for ds_t_idx in system_fi.downstream_turbine_indices:
@@ -502,25 +504,34 @@ def init_gprs(system_fi, X_scalar, y_scalar, input_labels, kernel, k_delay, max_
                                    upstream_turbine_indices=upstream_turbine_indices,
                                    model_type=GP_CONSTANTS['MODEL_TYPE'])
 
-        if os.path.exists(os.path.join(DATA_DIR, f'X_test_ds-{ds_t_idx}_kdelay-{k_delay}')):
-            with open(os.path.join(DATA_DIR, f'X_test_ds-{ds_t_idx}_kdelay-{k_delay}'), 'rb') as f:
-                gpr.X_test = pickle.load(f)
-        else:
-            test_vectors = []
-            for l in turbine_input_labels:
-                if 'AxIndFactors' in l:
-                    test_vectors.append(AX_IND_FACTOR_TEST_POINTS)
-                elif 'YawAngles' in l:
-                    test_vectors.append(YAW_ANGLE_TEST_POINTS)
-                elif 'TurbineWindSpeeds' in l:
-                    test_vectors.append(UPSTREAM_WIND_SPEED_TEST_POINTS)
-                elif 'FreestreamWindDir' in l:
-                    test_vectors.append(UPSTREAM_WIND_DIR_TEST_POINTS)
+        # if os.path.exists(os.path.join(DATA_DIR, f'X_test_ds-{ds_t_idx}_kdelay-{k_delay}')):
+        #     with open(os.path.join(DATA_DIR, f'X_test_ds-{ds_t_idx}_kdelay-{k_delay}'), 'rb') as f:
+        #         gpr.X_test = pickle.load(f)
+        # else:
+        #     test_vectors = []
+        #
+        #     gpr.X_test = gpr.X_scalar.transform(np.array(np.meshgrid(*test_vectors, copy=False)).T.reshape(-1, len(turbine_input_labels)))
+        #
+        #     with open(os.path.join(DATA_DIR, f'X_test_ds-{ds_t_idx}_kdelay-{k_delay}'), 'wb') as f:
+        #         pickle.dump(gpr.X_test, f)
 
-            gpr.X_test = gpr.X_scalar.transform(np.array(np.meshgrid(*test_vectors, copy=False)).T.reshape(-1, len(turbine_input_labels)))
 
-            with open(os.path.join(DATA_DIR, f'X_test_ds-{ds_t_idx}_kdelay-{k_delay}'), 'wb') as f:
-                pickle.dump(gpr.X_test, f)
+
+        X_test_indices = np.random.randint([N_TEST_POINTS_PER_COORD for l in turbine_input_labels],
+                                           size=(n_test_points, len(turbine_input_labels)))
+
+        X_test = []
+        for l_idx, l in enumerate(turbine_input_labels):
+            if 'AxIndFactors' in l:
+                X_test.append(AX_IND_FACTOR_TEST_POINTS[X_test_indices[:, l_idx]])
+            elif 'YawAngles' in l:
+                X_test.append(YAW_ANGLE_TEST_POINTS[X_test_indices[:, l_idx]])
+            elif 'TurbineWindSpeeds' in l:
+                X_test.append(UPSTREAM_WIND_SPEED_TEST_POINTS[X_test_indices[:, l_idx]])
+            elif 'FreestreamWindDir' in l:
+                X_test.append(UPSTREAM_WIND_DIR_TEST_POINTS[X_test_indices[:, l_idx]])
+
+        gpr.X_test = gpr.X_scalar.transform(np.transpose(X_test))
 
         gprs.append(gpr)
     return gprs

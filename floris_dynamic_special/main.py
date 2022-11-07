@@ -14,7 +14,7 @@ import matplotlib as mpl
 from preprocessing import add_gaussian_noise
 import multiprocessing as mp
 from multiprocessing import Pool
-from plotting import plot_training_data
+from plotting import plot_training_data, plot_score, plot_std_evolution, plot_ts
 import matplotlib.animation as animation
 from matplotlib.animation import FuncAnimation, FFMpegWriter
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel, Matern
@@ -55,11 +55,10 @@ mpl.rcParams.update({'font.size': SMALL_FONT_SIZE,
 
 RUN_MPC = False
 RUN_GP = True
-PLOT_GP = True
-TMAX = 600
+PLOT_GP = False
 TRAIN_ONLINE = True
 FIT_ONLINE = True
-DEBUG = True
+DEBUG = False
 
 # construct case hierarchy
 default_kernel = lambda: ConstantKernel() * RBF()
@@ -75,12 +74,14 @@ if DEBUG:
     NOISE_STD_VALS = [default_noise_std]
     K_DELAY_VALS = [default_k_delay]
     BATCH_SIZE_VALS = [default_batch_size]
+    TMAX = 600
 else:
     KERNELS = [lambda: ConstantKernel() * RBF(), lambda: ConstantKernel() * Matern()]
     MAX_TRAINING_SIZE_VALS = [50, 100, 200, 400]
     NOISE_STD_VALS = [0.0001, 0.001, 0.01, 0.1]
     K_DELAY_VALS = [2, 4, 6, 8]
     BATCH_SIZE_VALS = [1, 5, 10, 25]
+    TMAX = 600
 
 cases = [{'kernel': default_kernel(), 'max_training_size': default_max_training_size,
           'noise_std': default_noise_std, 'k_delay': default_k_delay, 'batch_size': x} for x in BATCH_SIZE_VALS] + \
@@ -336,8 +337,8 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx, X_scala
                                                                for k in k_to_add.loc[unadded_k_idx].values],
                                                     k_delay=k_delay)
 
-                    assert potential_X_train_new.shape[0] == len(k_to_add)
-                    gprs[gp_idx].choose_new_data(potential_X_train_new, potential_y_train_new, k_to_add,
+                    assert potential_X_train_new.shape[0] == len(k_to_add.loc[unadded_k_idx])
+                    gprs[gp_idx].choose_new_data(potential_X_train_new, potential_y_train_new, k_to_add.loc[unadded_k_idx],
                                                  n_datapoints=batch_size)
 
                     # refit gp
@@ -413,7 +414,7 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx, X_scala
         # ax.set(title=f'TurbineWindSpeeds_{ds_idx} GP Training Outputs')
     gp_idx = 0
     ani = FuncAnimation(training_fig, animate, frames=len(y_train_frames), interval=25, fargs=[gp_idx])
-    ani.save(f'./figs/training_ani_case-{case_idx}_df-{simulation_idx}_gp.mp4')
+    ani.save(os.path.join(FIG_DIR, f'training_ani_case-{case_idx}_df-{simulation_idx}_gp.mp4'))
 
     with open(os.path.join(SAVE_DIR, f'simulation_data_{dataset_type}_case-{case_idx}_df-{simulation_idx}'), 'wb') as fp:
         pickle.dump(results, fp)
@@ -582,7 +583,7 @@ if __name__ == '__main__':
                 pool.close()
 
     if PLOT_GP:
-
+        system_fi = get_system_info()
         ## FETCH SIMULATION RESULTS
         simulation_results = defaultdict(list)
         for root, dir, filenames in os.walk(SAVE_DIR):
@@ -614,16 +615,16 @@ if __name__ == '__main__':
                             for sim in simulation_results[dataset_type]])
                     elif score_type == 'r2':
                         turbine_sim_score[dataset_type].append([
-                            1 - (((sim['true'][:, i] - sim['pred'][:, i])** 2).sum() /
-                                 ((sim['true'][:, i] - sim['true'][:, i].mean()) ** 2).sum())
+                            1 - (np.nansum((sim['true'][:, i] - sim['pred'][:, i])**2) /
+                                 np.nansum((sim['true'][:, i] - np.nanmean(sim['true'][:, i]))**2))
                             for sim in simulation_results[dataset_type]])
 
                     turbine_score_mean[dataset_type].append(np.mean(turbine_sim_score[dataset_type][i]))
                     turbine_score_std[dataset_type].append(np.std(turbine_sim_score[dataset_type][i]))
 
                 # for each simulation, compute mean rmse over all downstream turbines
-                sim_score[dataset_type] = np.mean(turbine_sim_score[dataset_type], axis=1)
-                assert sim_score[dataset_type].shape[0] == len(simulation_results)
+                sim_score[dataset_type] = np.mean(turbine_sim_score[dataset_type], axis=0)
+                assert sim_score[dataset_type].shape[0] == len(simulation_results[dataset_type])
 
             return sim_score, turbine_sim_score, turbine_score_mean, turbine_score_std
 
@@ -631,25 +632,9 @@ if __name__ == '__main__':
         sim_score, turbine_sim_score, turbine_score_mean, turbine_score_std \
             = compute_score(system_fi, simulation_results, score_type='r2')
 
-        def plot_score(turbine_score_mean, turbine_score_std):
-            """
-           RMSE mean and std (true turbine effective wind speed vs. GP estimate) over all simulations for
-            each downstream turbine
-            Returns:
-
-            """
-            err_fig, err_ax = plt.subplots(2, 1)
-
-            for ax_idx, dataset_type in enumerate(['train', 'test']):
-                err_ax[ax_idx].errorbar(x=system_fi.downstream_turbine_indices,
-                                        y=turbine_score_mean, yerr=turbine_score_std)
-                err_ax[ax_idx].set(
-                    title=f'Downstream Turbine Effective Wind Speed RMSE over all {dataset_type.capitalize()}ing Simulations [m/s]')
-
-            err_ax[-1].set(xlabel='Downstream Turbine Index')
-
-            err_fig.show()
-            plt.savefig(os.path.join(FIG_DIR, f'rmse.png'))
+        score_fig = plot_score(system_fi, turbine_score_mean, turbine_score_std)
+        score_fig.show()
+        score_fig.savefig(os.path.join(FIG_DIR, f'rmse.png'))
 
         if len(system_fi.floris.farm.turbines) == 9:
             ds_indices = [4, 7]
@@ -662,68 +647,13 @@ if __name__ == '__main__':
         sim_indices = {'train': np.argsort(sim_score['train'])[:n_rmse_plots],
                        'test': np.argsort(sim_score['test'])[:n_rmse_plots]}
 
-        def plot_ts(simulation_results, sim_indices):
-            """
-           GP estimate, true value, noisy measurements of
-            effective wind speeds of downstream turbines vs.
-            time for one dataset
-            Returns:
+        ts_fig = plot_ts(TMAX, ds_indices, simulation_results, sim_indices)
+        ts_fig.show()
+        ts_fig.savefig(os.path.join(FIG_DIR, f'time_series.png'))
 
-            """
-            time = np.arange(TMAX)
-            ts_fig, ts_ax = plt.subplots(len(sim_indices['train']) + len(sim_indices['test']), 1, sharex=True, sharey=True)
-
-            ax_idx = -1
-            for i, dataset_type in enumerate(['train', 'test']):
-                for j, sim_idx in enumerate(sim_indices[dataset_type]):
-                    ax_idx += 1
-                    for ds_idx in ds_indices:
-                        ts_ax[ax_idx].plot(time, simulation_results[sim_idx]['true'][:, ds_idx], label=f'Turbine {ds_idx} True')
-                        ts_ax[ax_idx].plot(time, simulation_results[sim_idx]['pred'][:, ds_idx], label=f'Turbine {ds_idx} Predicted Mean')
-                        ts_ax[ax_idx].plot(time, simulation_results[sim_idx]['modeled'][:, ds_idx], label=f'Turbine {ds_idx} Base Modeled')
-                        ts_ax[ax_idx].scatter(time, simulation_results[sim_idx]['meas'][:, ds_idx], c='r', label=f'Turbine {ds_idx} Measurements')
-                        # ts_ax_scatter(time, gprs[0].y_train, c='p', label='Training Outputs')
-                        ts_ax[ax_idx].fill_between(time, simulation_results[sim_idx]['pred'][:, ds_idx]
-                                           - simulation_results[sim_idx]['std'][:, ds_idx],
-                                                 simulation_results[sim_idx]['pred'][:, ds_idx]
-                                           + simulation_results[sim_idx]['std'][:, ds_idx],
-                                           alpha=0.1, label=f'Turbine {ds_idx} Predicted Std. Dev.')
-
-                        ts_ax[ax_idx].set(title=f'Downstream Turbine Effective Wind Speeds for {dataset_type.capitalize()}ing Simulation {j} [m/s]')
-
-            ts_ax[0].legend(loc='center left')
-            ts_ax[-1].set(xlabel='Time [s]')
-            ts_fig.show()
-            plt.savefig(os.path.join(FIG_DIR, f'time_series.png'))
-
-        def plot_std_evolution(simulation_results, sim_indices):
-            """
-            plot evolution of sum of predicted variance at grid test points for middle column downstream turbines vs online training time
-            Returns:
-
-            """
-            # for each simulation, each time gp.add_training_data is called,
-            # the predicted variance is computed for a grid of test points
-            time = np.arange(TMAX)
-            std_fig, std_ax = plt.subplots(len(sim_indices['train']) + len(sim_indices['test']), 1,
-                                           sharex=True, sharey=True)
-
-            ax_idx = -1
-            for i, dataset_type in enumerate(['train', 'test']):
-                for j, sim_idx in enumerate(sim_indices[dataset_type]):
-                    ax_idx += 1
-                    for ds_idx in ds_indices:
-                        std_ax[ax_idx].plot(time, simulation_results[sim_idx]['test_std'][:, ds_idx],
-                                           label=f'Turbine {ds_idx}')
-
-                        std_ax[ax_idx].set(
-                            title=f'Downstream Turbine Effective Wind Speed Standard Deviation '
-                                  f'vs. Time for {dataset_type.capitalize()}ing Simulation {j} [m/s]')
-
-            std_ax[0].legend(loc='center left')
-            std_ax[-1].set(xlabel='Time [s]')
-            std_fig.show()
-            plt.savefig(os.path.join(FIG_DIR, f'std_evolution.png'))
+        std_fig = plot_std_evolution(TMAX, ds_indices, simulation_results, sim_indices)
+        std_fig.show()
+        plt.savefig(os.path.join(FIG_DIR, f'std_evolution.png'))
 
         # def plot_score_evolution():
         #     """
