@@ -394,9 +394,9 @@ def get_base_model():
 
 def get_dfs(df_indices, proportion_training_data=GP_CONSTANTS['PROPORTION_TRAINING_DATA']):
     ## FETCH RAW DATA
-    for dir in [DATA_DIR, FIG_DIR]:
-        if not os.path.exists(dir):
-            os.mkdir(dir)
+    # for dir in [DATA_DIR, FIG_DIR]:
+    #     if not os.path.exists(dir):
+    #         os.mkdir(dir)
 
     csv_paths = get_paths(SAVE_DIR, df_indices=df_indices)
 
