@@ -108,9 +108,9 @@ n_turbines = len(fi.floris.farm.turbines)
 # fi.reinitialize_flow_field(wind_speed=start_ws, wind_direction=start_wd)
 
 # make case save dir
-for dir in [save_dir, data_dir, fig_dir]: 
-    if not os.path.exists(dir):
-        os.makedirs(dir)
+# for dir in [save_dir, data_dir, fig_dir]:
+#     if not os.path.exists(dir):
+#         os.makedirs(dir)
 
 # **************************************** GENERATE TIME-VARYING FREESTREAM WIND SPEED/DIRECTION, YAW ANGLE, TURBINE TOPOLOGY SWEEP **************************************** #
 # TODO - alt generate DLCs using turbsim

@@ -99,11 +99,11 @@ cases = [{'kernel': default_kernel(), 'max_training_size': default_max_training_
 # k_delay = K_DELAY_VALS[0]
 # batch_size = BATCH_SIZE_VALS[0]
 
-if not os.path.exists(os.path.join(SAVE_DIR)):
-    os.makedirs(SAVE_DIR)
-
-if not os.path.exists(os.path.join(FIG_DIR)):
-    os.makedirs(FIG_DIR)
+# if not os.path.exists(os.path.join(SAVE_DIR)):
+#     os.makedirs(SAVE_DIR)
+#
+# if not os.path.exists(os.path.join(FIG_DIR)):
+#     os.makedirs(FIG_DIR)
 
 def initialize(full_offline_measurements_df, system_fi, X, y, input_labels, k_delay, noise_std, max_training_size, kernel):
     # Define normalization procedure
