@@ -33,9 +33,9 @@ if sys.platform == 'darwin':
     TOTAL_TIME = 600  # five minutes
 elif sys.platform == 'linux':
     FARM_LAYOUT = '9turb'
-    save_dir = f'/scratch/ahenry/{FARM_LAYOUT}_wake_field_cases'
-    data_dir = '/scratch/ahenry/data'
-    fig_dir = '/scratch/ahenry/figs'
+    save_dir = f'/scratch/aohe7145/wake_gp/{FARM_LAYOUT}_wake_field_cases'
+    data_dir = f'/scratch/alpine/aohe7145/wake_gp/data'
+    fig_dir = f'/scratch/alpine/aohe7145/wake_gp/figs'
     TOTAL_TIME = 600  # ten minutes
     DEBUG = False
 
