@@ -123,7 +123,7 @@ def initialize(full_offline_measurements_df, system_fi, k_delay, noise_std, max_
         k_to_add, effective_dk, reduced_effective_dk, history_exists = \
             gp.check_history(noisy_measurements_df, system_fi, k_delay=k_delay, dt=GP_CONSTANTS['DT'])
 
-        print(noisy_measurements_df.index[-1], effective_dk, gp.turbine_index)
+        # print(noisy_measurements_df.index[-1], effective_dk, gp.turbine_index)
 
         if not history_exists:
             continue
@@ -435,9 +435,9 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
     # for gp_idx, ds_idx in enumerate(system_fi.downstream_turbine_indices):
 
         # ax.set(title=f'TurbineWindSpeeds_{ds_idx} GP Training Outputs')
-    gp_idx = 0
-    ani = FuncAnimation(training_fig, animate, frames=len(y_train_frames), interval=25, fargs=[gp_idx])
-    ani.save(os.path.join(FIG_DIR, f'training_ani_case-{case_idx}_df-{simulation_idx}_gp.mp4'))
+    # gp_idx = 0
+    # ani = FuncAnimation(training_fig, animate, frames=len(y_train_frames), interval=25, fargs=[gp_idx])
+    # ani.save(os.path.join(FIG_DIR, f'training_ani_case-{case_idx}_df-{simulation_idx}_gp.mp4'))
 
     with open(os.path.join(SAVE_DIR, f'simulation_data_{dataset_type}_case-{case_idx}_df-{simulation_idx}'), 'wb') as fp:
         pickle.dump(results, fp)
