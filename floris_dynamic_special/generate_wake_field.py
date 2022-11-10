@@ -18,7 +18,7 @@ import pandas as pd
 import os
 import sys
 from multiprocessing import Pool
-from weis.aeroelasticse.CaseGen_General import CaseGen_General
+from CaseGen_General import CaseGen_General
 
 if sys.platform == 'darwin':
     FARM_LAYOUT = '2turb'
