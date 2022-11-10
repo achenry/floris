@@ -1,5 +1,6 @@
 import os, itertools
 import numpy as np
+from FileTools import save_yaml
 
 
 def save_case_matrix_direct(case_list, dir_matrix):
@@ -63,7 +64,37 @@ def save_case_matrix(matrix_out, change_vars, dir_matrix):
 		ofh.write(row)
 	ofh.close()
 
+def save_case_matrix_yaml(matrix_out, change_vars, dir_matrix, case_names):
+	matrix_out_yaml = {}
+	for var in change_vars:
+		matrix_out_yaml[var] = []
+  
+	matrix_out_yaml['Case_ID'] = []
+	matrix_out_yaml['Case_Name'] = []
 
+	for i, row in enumerate(matrix_out):
+		matrix_out_yaml['Case_ID'].append(i)
+		matrix_out_yaml['Case_Name'].append(case_names[i])
+		for val, var in zip(row, change_vars):
+			if type(val) is list:
+				if len(val) == 1:
+					val = val[0]
+			if type(val) in [np.float32, np.float64, np.single, np.double, np.longdouble]:
+				val = float(val)
+			elif type(val) in [np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64, np.intc, np.uintc, np.uint]:
+				val = int(val)
+			elif type(val) in [np.array, np.ndarray]:
+				val = val.tolist()
+			elif type(val) in [np.str_]:
+				val = str(val)
+			# elif len(val) > 0:
+			#     val = val.tolist()
+			matrix_out_yaml[var].append(val)
+
+	if not os.path.exists(dir_matrix):
+		os.makedirs(dir_matrix)
+
+	save_yaml(dir_matrix, 'case_matrix.yaml', matrix_out_yaml)
 
 def case_naming(n_cases, namebase=None):
 	# case naming
