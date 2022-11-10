@@ -112,32 +112,29 @@ def split_data(model_fi, system_fi, case_df, current_input_labels, model_type, k
     time = defaultdict(list)
     X = defaultdict(list)
     y = defaultdict(list)
-    # measurements_dict = defaultdict(list)
     for idx, row in case_df.iterrows():
 
         ## COMPUTE APPROPRIATE SAMPLING ITME, FOR SAME K_DELAY VALUE, CONSIDERING FREESTREAM WIND SPEED (FOR ONLINE LEARNING ONLY)
         downstream_distance = np.array([system_fi.floris.farm.turbine_map.coords[i].x1 - system_fi.min_downstream_dist for i in system_fi.downstream_turbine_indices])
         freestream_ws = row['FreestreamWindSpeed']
         delay_dt = (2 * downstream_distance) * (1 / k_delay) * (1 / freestream_ws)
-        effective_dk = int(delay_dt // dt)
-        # for key in case_df.columns: #current_input_labels:
-        #     measurements_dict[key].append(row[key])
-
+        effective_dk = delay_dt // dt
         # if not enough auto-regressive inputs exist to collect, skip to next time-step in data
-        if len(case_df.index) < (k_delay * effective_dk):
+        if len(case_df.index) < min(k_delay * effective_dk):
             print('Not enough data points to generate any training data')
 
-        if row['Time'] < (k_delay * effective_dk):
+        if row['Time'] < min(k_delay * effective_dk):
             continue
         
         y_measured = [row[f'TurbineWindSpeeds_{t}'] for t in system_fi.downstream_turbine_indices]
+        
         time_input, inputs = generate_input_vector(case_df, idx, system_fi.upstream_turbine_indices, effective_dk, k_delay)
         
         time[dataset_type] = time[dataset_type] + time_input
         X[dataset_type].append(inputs)
         y[dataset_type].append(y_measured)
             
-    return time, X, y#, measurements_dict
+    return time, X, y
 
 
 def normalize_data(X, y, renormalize, data_dir):

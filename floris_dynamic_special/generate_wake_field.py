@@ -57,14 +57,13 @@ WD_TI = 0
 DEBUG = len(sys.argv) > 1 and sys.argv[1] == 'debug'
 print('debug', DEBUG)
 
-TOTAL_TIME = 100 if DEBUG else 600
+TOTAL_TIME = 200 if DEBUG else 600
 
 # hold constant over simulation time span
-FREESTREAM_WIND_SPEEDS = [step_change([val], TOTAL_TIME, DT) for val in ([8] if DEBUG else [8, 10, 12])]
+FREESTREAM_WIND_SPEEDS = [step_change([val], TOTAL_TIME, DT) for val in ([8, 10] if DEBUG else [8, 10, 12])]
 FREESTREAM_WIND_DIRS = [step_change([val], TOTAL_TIME, DT) for val in ([260] if DEBUG else [250, 260, 270])]
 
 # change over course of single simulation to learn how wake fields propagate over time
-# TODO add cases with constant yaw angle, ax ind factor, incur changes at different times by changing number vals
 YAW_ANGLES = [step_change([0.0, 7.5, 15], TOTAL_TIME, DT)] if DEBUG else \
     [step_change([-20, -15, -10], TOTAL_TIME, DT),
     step_change([-10, -15, -20], TOTAL_TIME, DT),

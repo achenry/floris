@@ -10,6 +10,7 @@ from plotting import plot_prediction_vs_input, plot_prediction_vs_time, plot_mea
 from preprocessing import get_paths, read_datasets, collect_raw_data, generate_input_labels, generate_input_vector, split_all_data
 from numpy.linalg import norm
 import sys
+from sklearn.preprocessing import StandardScaler
 
 # GOAL: learn propagation speed
 # GOAL: changers in ax_ind factor of upstream turbines -> changes in effective wind speed at downstream turbines
@@ -41,7 +42,7 @@ UPSTREAM_WIND_SPEED_TEST_POINTS = np.linspace(8, 12, N_TEST_POINTS_PER_COORD)
 UPSTREAM_WIND_DIR_TEST_POINTS = np.linspace(250, 270, N_TEST_POINTS_PER_COORD)
 
 if sys.platform == 'darwin':
-    FARM_LAYOUT = '2turb'
+    FARM_LAYOUT = '9turb'
     SAVE_DIR = f'./{FARM_LAYOUT}_wake_field_cases'
     FLORIS_DIR = f'./{FARM_LAYOUT}_floris_input.json'
     BASE_MODEL_FLORIS_DIR = f'./{FARM_LAYOUT}_base_model_floris_input.json'
@@ -60,7 +61,7 @@ elif sys.platform == 'linux':
 # 3) formulate and implement exploration maximization algorithm
 
 class DownstreamTurbineGPR:
-    def __init__(self, kernel, optimizer, X_scalar, y_scalar,
+    def __init__(self, kernel, optimizer,
                  max_training_size, input_labels, n_outputs, turbine_index,
                  upstream_turbine_indices, model_type):
         self.input_labels = input_labels
@@ -74,8 +75,8 @@ class DownstreamTurbineGPR:
         self.y_train_replay = np.zeros((0, self.n_outputs))
         self.k_train_replay = []
 
-        self.X_scalar = X_scalar
-        self.y_scalar = y_scalar
+        self.X_scalar = None
+        self.y_scalar = None
         self.max_training_size = max_training_size
         self.max_replay_size = max_training_size
         self.gpr = GaussianProcessRegressor(
@@ -135,13 +136,18 @@ class DownstreamTurbineGPR:
         return k_to_add, effective_dk, reduced_effective_dk, history_exists
 
     def prepare_data(self, measurements_df, k_to_add, effective_dk, k_delay=GP_CONSTANTS['K_DELAY'], y_modeled=None):
-        X = self.X_scalar.transform(
-            np.vstack([generate_input_vector(
+        
+        unscaled_X = np.vstack([generate_input_vector(
                 measurements_df, k_idx, self.upstream_turbine_indices, effective_dk.loc[k_idx], k_delay)[1]
-             for k_idx in k_to_add.index]))
-
-        y_err = measurements_df.loc[k_to_add, f'TurbineWindSpeeds_{self.turbine_index}'].to_numpy() - y_modeled
-        y = self.y_scalar.transform(y_err.reshape(-1, self.n_outputs))
+             for k_idx in k_to_add.index])
+        unscaled_y = (measurements_df.loc[k_to_add, f'TurbineWindSpeeds_{self.turbine_index}'].to_numpy() - y_modeled).reshape(-1, self.n_outputs)
+        
+        if self.X_scalar is None:
+            self.X_scalar = StandardScaler().fit(unscaled_X)
+            self.y_scalar = StandardScaler().fit(unscaled_y)
+       
+        X = self.X_scalar.transform(unscaled_X)
+        y = self.y_scalar.transform(unscaled_y)
 
         return X, y
 
@@ -151,7 +157,7 @@ class DownstreamTurbineGPR:
                                                               else 0:, :]
         self.y_train = np.vstack([self.y_train, new_y_train])[-self.max_training_size if self.max_training_size > -1
                                                               else 0:, :]
-        assert self.X_train.shape[0] == self.max_training_size
+        assert self.X_train.shape[0] <= self.max_training_size
 
         if is_online:
             self.k_train = (self.k_train + list(new_k_train))[-self.max_training_size if self.max_training_size > -1
@@ -439,16 +445,16 @@ def get_data(measurements_dfs, system_fi, model_type=GP_CONSTANTS['MODEL_TYPE'],
             plot_raw_measurements_vs_time(ax, plotting_dfs, input_types) 
             plt.show()
 
-        time, X, y = split_all_data(model_fi, system_fi, measurements_dfs, current_input_labels,
-                                                      model_type, k_delay, dt)
-
-        for var in ['time', 'X', 'y']:
-            with open(os.path.join(DATA_DIR, var), 'wb') as f:
-                pickle.dump(locals()[var], f)
+        # time, X, y = split_all_data(model_fi, system_fi, measurements_dfs, current_input_labels,
+        #                                               model_type, k_delay, dt)
+        #
+        # for var in ['time', 'X', 'y']:
+        #     with open(os.path.join(DATA_DIR, var), 'wb') as f:
+        #         pickle.dump(locals()[var], f)
             
     else:
         mmry_dict = {}
-        for var in ['time', 'X', 'y']:
+        for var in ['time', 'X', 'y', 'measurements_dfs']:
             with open(os.path.join(DATA_DIR, var), 'rb') as f:
                 # exec("nonlocal " + var)
                 # sys._getframe(1).f_locals[var] = pickle.load(f)
@@ -479,8 +485,8 @@ def get_data(measurements_dfs, system_fi, model_type=GP_CONSTANTS['MODEL_TYPE'],
         
     return time, X, y, current_input_labels, input_labels
 
-def init_gprs(system_fi, X_scalar, y_scalar, input_labels, kernel, k_delay,
-              max_training_size=GP_CONSTANTS['MAX_TRAINING_SIZE'], n_test_points=GP_CONSTANTS['N_TEST_POINTS']):
+def init_gprs(system_fi, kernel, k_delay,
+              max_training_size=GP_CONSTANTS['MAX_TRAINING_SIZE']):
     ## GENERATE GP MODELS FOR EACH DOWNSTREAM TURBINE'S WIND SPEED
     gprs = []
     for ds_t_idx in system_fi.downstream_turbine_indices:
@@ -493,45 +499,18 @@ def init_gprs(system_fi, X_scalar, y_scalar, input_labels, kernel, k_delay,
          
         # PARAMETERIZE GAUSSIAN PROCESS REGRESSOR
          # DotProduct() + WhiteKernel()
+        input_labels = generate_input_labels(upstream_turbine_indices, k_delay)
         turbine_input_labels = [l for l in input_labels
                                 if 'TurbineWindSpeeds' not in l or int(l.split('_')[1]) in upstream_turbine_indices]
 
         gpr = DownstreamTurbineGPR(kernel, optimizer,
-                                   X_scalar, y_scalar,
                                    max_training_size=max_training_size, 
                                    input_labels=turbine_input_labels, n_outputs=1,
                                    turbine_index=ds_t_idx,
                                    upstream_turbine_indices=upstream_turbine_indices,
                                    model_type=GP_CONSTANTS['MODEL_TYPE'])
 
-        # if os.path.exists(os.path.join(DATA_DIR, f'X_test_ds-{ds_t_idx}_kdelay-{k_delay}')):
-        #     with open(os.path.join(DATA_DIR, f'X_test_ds-{ds_t_idx}_kdelay-{k_delay}'), 'rb') as f:
-        #         gpr.X_test = pickle.load(f)
-        # else:
-        #     test_vectors = []
-        #
-        #     gpr.X_test = gpr.X_scalar.transform(np.array(np.meshgrid(*test_vectors, copy=False)).T.reshape(-1, len(turbine_input_labels)))
-        #
-        #     with open(os.path.join(DATA_DIR, f'X_test_ds-{ds_t_idx}_kdelay-{k_delay}'), 'wb') as f:
-        #         pickle.dump(gpr.X_test, f)
-
-
-
-        X_test_indices = np.random.randint([N_TEST_POINTS_PER_COORD for l in turbine_input_labels],
-                                           size=(n_test_points, len(turbine_input_labels)))
-
-        X_test = []
-        for l_idx, l in enumerate(turbine_input_labels):
-            if 'AxIndFactors' in l:
-                X_test.append(AX_IND_FACTOR_TEST_POINTS[X_test_indices[:, l_idx]])
-            elif 'YawAngles' in l:
-                X_test.append(YAW_ANGLE_TEST_POINTS[X_test_indices[:, l_idx]])
-            elif 'TurbineWindSpeeds' in l:
-                X_test.append(UPSTREAM_WIND_SPEED_TEST_POINTS[X_test_indices[:, l_idx]])
-            elif 'FreestreamWindDir' in l:
-                X_test.append(UPSTREAM_WIND_DIR_TEST_POINTS[X_test_indices[:, l_idx]])
-
-        gpr.X_test = gpr.X_scalar.transform(np.transpose(X_test))
+        
 
         gprs.append(gpr)
     return gprs

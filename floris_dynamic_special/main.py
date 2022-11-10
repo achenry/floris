@@ -3,9 +3,11 @@ from mpc import MPC
 import numpy as np
 from scipy.linalg import block_diag
 from scipy.stats import norm
-from DownstreamTurbineGPR import GP_CONSTANTS, get_system_info, get_data, init_gprs, SAVE_DIR, FIG_DIR, get_base_model, get_dfs
+from DownstreamTurbineGPR import GP_CONSTANTS, get_system_info, get_data, init_gprs, SAVE_DIR, FIG_DIR, \
+    get_base_model, get_dfs, \
+    N_TEST_POINTS_PER_COORD, \
+    AX_IND_FACTOR_TEST_POINTS, YAW_ANGLE_TEST_POINTS, UPSTREAM_WIND_DIR_TEST_POINTS, UPSTREAM_WIND_SPEED_TEST_POINTS
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
 from collections import defaultdict
 import pickle
 import os
@@ -56,7 +58,7 @@ mpl.rcParams.update({'font.size': SMALL_FONT_SIZE,
 
 RUN_MPC = False
 RUN_GP = True
-PLOT_GP = False
+PLOT_GP = True
 TRAIN_ONLINE = True
 FIT_ONLINE = True
 DEBUG = len(sys.argv) > 1 and sys.argv[1] == 'debug'
@@ -76,7 +78,8 @@ if DEBUG:
     NOISE_STD_VALS = [default_noise_std]
     K_DELAY_VALS = [default_k_delay]
     BATCH_SIZE_VALS = [default_batch_size]
-    TMAX = 600
+    TMAX = 100
+    GP_CONSTANTS['PROPORTION_TRAINING_DATA'] = 0.5
 else:
     KERNELS = [lambda: ConstantKernel() * RBF(), lambda: ConstantKernel() * Matern()]
     MAX_TRAINING_SIZE_VALS = [50, 100, 200, 400]
@@ -107,13 +110,10 @@ cases = [{'kernel': default_kernel(), 'max_training_size': default_max_training_
 # if not os.path.exists(os.path.join(FIG_DIR)):
 #     os.makedirs(FIG_DIR)
 
-def initialize(full_offline_measurements_df, system_fi, X, y, input_labels, k_delay, noise_std, max_training_size, kernel):
-    # Define normalization procedure
-    X_scalar = StandardScaler().fit(X['train'])
-    y_scalar = StandardScaler().fit(y['train'])
-
-    gprs = init_gprs(system_fi, X_scalar, y_scalar, input_labels, kernel=kernel, k_delay=k_delay,
-                     max_training_size=max_training_size)
+def initialize(full_offline_measurements_df, system_fi, k_delay, noise_std, max_training_size, kernel,
+               n_test_points=GP_CONSTANTS['N_TEST_POINTS']):
+    
+    gprs = init_gprs(system_fi, kernel=kernel, k_delay=k_delay, max_training_size=max_training_size)
 
     # add noise to Turbine Wind Speed measurements
     noisy_measurements_df = add_gaussian_noise(system_fi, full_offline_measurements_df, std=noise_std)
@@ -132,7 +132,7 @@ def initialize(full_offline_measurements_df, system_fi, X, y, input_labels, k_de
         shuffle_idx = shuffle_idx[:max_training_size]
 
         # compute the base model values for the wake, given all of the freestream wind speeds, yaw angles and axial induction factors over time for each time-series dataset
-        y_modeled = []
+        
         if GP_CONSTANTS['MODEL_TYPE'] == 'error':
             # initialize to steady-state
             model_fi.floris.farm.flow_field.mean_wind_speed = noisy_measurements_df.loc[0, 'FreestreamWindSpeed']
@@ -165,20 +165,38 @@ def initialize(full_offline_measurements_df, system_fi, X, y, input_labels, k_de
             noisy_measurements_df[f'TurbineWindSpeeds_{gp.turbine_index}'].to_numpy()
         else:
             y_modeled = np.zeros(len(noisy_measurements_df.index))
-
+        
         X_train_new, y_train_new = gp.prepare_data(noisy_measurements_df, k_to_add.loc[shuffle_idx],
                                                    reduced_effective_dk.loc[shuffle_idx],
                                                    y_modeled=y_modeled[shuffle_idx],
                                                    k_delay=k_delay)
+        
+
+
+        X_test_indices = np.random.randint([N_TEST_POINTS_PER_COORD for l in gp.input_labels],
+                                           size=(n_test_points, len(gp.input_labels)))
+
+        X_test = []
+        for l_idx, l in enumerate(gp.input_labels):
+            if 'AxIndFactors' in l:
+                X_test.append(AX_IND_FACTOR_TEST_POINTS[X_test_indices[:, l_idx]])
+            elif 'YawAngles' in l:
+                X_test.append(YAW_ANGLE_TEST_POINTS[X_test_indices[:, l_idx]])
+            elif 'TurbineWindSpeeds' in l:
+                X_test.append(UPSTREAM_WIND_SPEED_TEST_POINTS[X_test_indices[:, l_idx]])
+            elif 'FreestreamWindDir' in l:
+                X_test.append(UPSTREAM_WIND_DIR_TEST_POINTS[X_test_indices[:, l_idx]])
+
+        gp.X_test = gp.X_scalar.transform(np.transpose(X_test))
 
         gp.add_data(X_train_new, y_train_new, k_to_add.loc[shuffle_idx], is_online=False)
 
         # Fit data
         gp.fit()
 
-    return gprs, X_scalar, y_scalar
+    return gprs
 
-def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx, X_scalar, y_scalar,
+def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                           current_input_labels, k_delay, noise_std, batch_size, dataset_type):
 
     # Fetch wind farm system layout information, floris interface used to simulate 'true' wind farm
@@ -273,9 +291,10 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx, X_scala
 
             # for each downstream turbine
             for gp_idx, ds_turbine_idx in enumerate(system_fi.downstream_turbine_indices):
-                # collect new measurements: effective wind speed at downstream turbine (target)
-                current_measurements[f'TurbineWindSpeeds_{ds_turbine_idx}'].append(
-                    system_fi.floris.farm.turbines[ds_turbine_idx].average_velocity)
+                if ds_turbine_idx not in system_fi.upstream_turbine_indices:
+                    # collect new measurements: effective wind speed at downstream turbine (target)
+                    current_measurements[f'TurbineWindSpeeds_{ds_turbine_idx}'].append(
+                        system_fi.floris.farm.turbines[ds_turbine_idx].average_velocity)
 
             # add collected data to online training buffer,
             # only include inputs which consider turbines upstream of this turbine (based on radius)
@@ -305,7 +324,7 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx, X_scala
 
                     # plot evolution of gprs[gp_idx].y_train
                     y_train_unique, y_train_count = np.unique(gprs[gp_idx].y_train, return_counts=True)
-                    y_train_frames[-1].append(sorted(list(zip(y_scalar.inverse_transform(
+                    y_train_frames[-1].append(sorted(list(zip(gprs[gp_idx].y_scalar.inverse_transform(
                         y_train_unique.reshape((-1, 1))).reshape((1, -1))[0], y_train_count)), key=lambda tup: tup[0]))
                     # x = y_scalar.inverse_transform(y_train_unique.reshape((-1, 1))).squeeze()
 
@@ -509,36 +528,35 @@ if __name__ == '__main__':
         print('Reading offline training data')
 
         # consider the following time-series cases
-        df_indices = None if not DEBUG else np.random.randint(0, 80, 5) #list(range(20))s
+        df_indices = None if not DEBUG else [0, 1] # np.random.randint(0, 80, 5) #list(range(20))s
         wake_field_dfs = get_dfs(df_indices, proportion_training_data=GP_CONSTANTS['PROPORTION_TRAINING_DATA'])
         full_offline_measurements_df = pd.concat(wake_field_dfs['train'], ignore_index=True)
 
         # time, X, y, current_input_labels, input_labels \
         if DEBUG:
-            case_data = {}
-            for k_delay in K_DELAY_VALS:
-                case_data[k_delay] = get_data(wake_field_dfs, system_fi,
-                           model_type=GP_CONSTANTS['MODEL_TYPE'], k_delay=k_delay, dt=GP_CONSTANTS['DT'],
-                           model_fi=model_fi, collect_raw_data_bool=GP_CONSTANTS['COLLECT_RAW_DATA'],
-                           plot_data_bool=GP_CONSTANTS['PLOT_DATA'])
+            # case_data = {}
+            # for k_delay in K_DELAY_VALS:
+            #     case_data[k_delay] = get_data(wake_field_dfs, system_fi,
+            #                model_type=GP_CONSTANTS['MODEL_TYPE'], k_delay=k_delay, dt=GP_CONSTANTS['DT'],
+            #                model_fi=model_fi, collect_raw_data_bool=GP_CONSTANTS['COLLECT_RAW_DATA'],
+            #                plot_data_bool=GP_CONSTANTS['PLOT_DATA'])
 
             case_gprs = []
             for case in cases:
                 case_gprs.append(initialize(full_offline_measurements_df, system_fi,
-                           case_data[case['k_delay']][1], case_data[case['k_delay']][2], case_data[case['k_delay']][4],
                            case['k_delay'], case['noise_std'], case['max_training_size'], case['kernel']))
         else:
             pool = Pool(mp.cpu_count())
-            case_data_list = pool.starmap(get_data,
-                                     [(wake_field_dfs, system_fi, GP_CONSTANTS['MODEL_TYPE'], k_delay,
-                                       GP_CONSTANTS['DT'], model_fi, GP_CONSTANTS['COLLECT_RAW_DATA'],
-                                       GP_CONSTANTS['PLOT_DATA']) for k_delay in K_DELAY_VALS])
-            case_data_list = {k_delay: case_data for k_delay, case_data in zip(K_DELAY_VALS, case_data_list)}
-
+            # case_data_list = pool.starmap(get_data,
+            #                          [(wake_field_dfs, system_fi, GP_CONSTANTS['MODEL_TYPE'], k_delay,
+            #                            GP_CONSTANTS['DT'], model_fi, GP_CONSTANTS['COLLECT_RAW_DATA'],
+            #                            GP_CONSTANTS['PLOT_DATA']) for k_delay in K_DELAY_VALS])
+            #
+            # case_data_list = {k_delay: case_data for k_delay, case_data in zip(K_DELAY_VALS, case_data_list)}
+            
             pool = Pool(mp.cpu_count())
             case_gprs = pool.starmap(initialize,
                          [(full_offline_measurements_df, system_fi,
-                           case_data[case['k_delay']][1], case_data[case['k_delay']][2], case_data[case['k_delay']][4],
                            case['k_delay'], case['noise_std'], case['max_training_size'], case['kernel'])
                           for case in cases])
             pool.close()
@@ -550,36 +568,37 @@ if __name__ == '__main__':
         K_SYS_MAX = int(TMAX // SYS_DT)
         time_steps = range(K_SYS_MAX)
 
+        current_input_labels = ['Time'] + ['FreestreamWindSpeed'] + ['FreestreamWindDir'] \
+                               + [f'TurbineWindSpeeds_{t}' for t in system_fi.turbine_indices] \
+                               + [f'AxIndFactors_{t}' for t in system_fi.turbine_indices] \
+                               + [f'YawAngles_{t}' for t in system_fi.turbine_indices]
+
         for case_idx, case in enumerate(cases):
             # Run simulations
 
             if DEBUG:
                 simulations_train = []
                 for df_idx, df in enumerate(wake_field_dfs['train']):
-                    run_single_simulation(case_idx, case_gprs[case_idx][0], df, df_idx,
-                                                   case_gprs[case_idx][1], case_gprs[case_idx][2],
-                                                   case_data[case['k_delay']][3],
+                    run_single_simulation(case_idx, case_gprs[case_idx], df, df_idx,
+                                                   current_input_labels,
                                                    case['k_delay'], case['noise_std'], case['batch_size'], 'train')
 
                 simulations_test = []
                 for df_idx, df in enumerate(wake_field_dfs['test']):
-                    run_single_simulation(case_idx, case_gprs[case_idx][0], df, df_idx + len(wake_field_dfs['train']),
-                                                   case_gprs[case_idx][1], case_gprs[case_idx][2],
-                                                   case_data[case['k_delay']][3],
+                    run_single_simulation(case_idx, case_gprs[case_idx], df, df_idx + len(wake_field_dfs['train']),
+                                                   current_input_labels,
                                                    case['k_delay'], case['noise_std'], case['batch_size'], 'test')
 
             else:
                 pool = Pool(mp.cpu_count())
                 simulations_train = pool.starmap(run_single_simulation,
-                                                 [(case_idx, case_gprs[case_idx][0], df, df_idx,
-                                                   case_gprs[case_idx][1], case_gprs[case_idx][2],
-                                                   case_data[case['k_delay']][3],
+                                                 [(case_idx, case_gprs[case_idx], df, df_idx,
+                                                   current_input_labels,
                                                    case['k_delay'], case['noise_std'], case['batch_size'], 'train')
                                                   for df_idx, df in enumerate(wake_field_dfs['train'])])
                 simulations_test = pool.starmap(run_single_simulation,
-                                                 [(case_idx, case_gprs[case_idx][0], df, df_idx + len(wake_field_dfs['train']),
-                                                   case_gprs[case_idx][1], case_gprs[case_idx][2],
-                                                   case_data[case['k_delay']][3],
+                                                 [(case_idx, case_gprs[case_idx], df, df_idx + len(wake_field_dfs['train']),
+                                                   current_input_labels,
                                                    case['k_delay'], case['noise_std'], case['batch_size'], 'test')
                                                   for df_idx, df in enumerate(wake_field_dfs['test'])])
                 pool.close()
