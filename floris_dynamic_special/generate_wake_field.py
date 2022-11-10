@@ -25,15 +25,11 @@ if sys.platform == 'darwin':
     save_dir = f'./{FARM_LAYOUT}_wake_field_cases'
     data_dir = './data'
     fig_dir = './figs'
-    TOTAL_TIME = 600  # five minutes
 elif sys.platform == 'linux':
     FARM_LAYOUT = '9turb'
     save_dir = f'/scratch/alpine/aohe7145/wake_gp/{FARM_LAYOUT}_wake_field_cases'
     data_dir = f'/scratch/alpine/aohe7145/wake_gp/data'
     fig_dir = f'/scratch/alpine/aohe7145/wake_gp/figs'
-    TOTAL_TIME = 600  # ten minutes
-
-
 
 # ********** #
 def step_change(vals, T, dt):
@@ -60,6 +56,8 @@ WS_TI = 0
 WD_TI = 0
 DEBUG = len(sys.argv) > 1 and sys.argv[1] == 'debug'
 print('debug', DEBUG)
+
+TOTAL_TIME = 100 if DEBUG else 600
 
 # hold constant over simulation time span
 FREESTREAM_WIND_SPEEDS = [step_change([val], TOTAL_TIME, DT) for val in ([8] if DEBUG else [8, 10, 12])]
@@ -199,21 +197,21 @@ def sim_func(case_idx, case):
         fi.reinitialize_flow_field(wind_speed=ws, wind_direction=wd, sim_time=sim_time)
         
         # calculate dynamic wake computationally
-        fi.calculate_wake(sim_time=sim_time, yaw_angles=yaw_angles[tt], axial_induction=ai_factors[tt])
+        fi.calculate_wake(yaw_angles=yaw_angles[tt], axial_induction=ai_factors[tt], sim_time=sim_time)
         
         if case_idx == 0:
             horizontal_planes.append(fi.get_hor_plane(x_resolution=200, y_resolution=100, height=90.0)) # horizontal plane at hub-height
             y_planes.append(fi.get_y_plane(x_resolution=200, z_resolution=100, y_loc=0.0)) # vertical plane parallel to freestream wind direction
             cross_planes.append(fi.get_cross_plane(y_resolution=100, z_resolution=100, x_loc=630.0)) # vertical plane parallel to turbine disc plane  
         
-        for t_idx, t in enumerate(downstream_turbine_indices):
+        # for t_idx, t in enumerate(downstream_turbine_indices):
             # turbine_wind_speeds[t_idx].append(fi.floris.farm.wind_map.turbine_wind_speed[t])
-            turbine_wind_speeds[t].append(fi.floris.farm.turbines[t].average_velocity)
+            # turbine_wind_speeds[t].append(fi.floris.farm.turbines[t].average_velocity)
             # turbine_wind_dirs[t_idx].append(fi.floris.farm.wind_map.turbine_wind_direction[t])
             # turbine_wind_dirs[t_idx].append(fi.floris.farm.wind_direction[t]) # TODO how to collect this accurately ?
             # turbine_turb_intensities[t_idx].append(fi.floris.farm.turbulence_intensity[t])
 
-        for t_idx, t in enumerate(upstream_turbine_indices):
+        for t in range(n_turbines):
             turbine_wind_speeds[t].append(fi.floris.farm.turbines[t].average_velocity)
         
         # for t, turbine in enumerate(fi.floris.farm.turbines):
@@ -233,7 +231,7 @@ def sim_func(case_idx, case):
     # turbine_wind_dirs[turbine_wind_dirs > 180] = turbine_wind_dirs[turbine_wind_dirs > 180] - 360
     yaw_angles = np.array(yaw_angles)
     ai_factors = np.array(ai_factors)
-    turbine_turb_intensities = np.array(turbine_turb_intensities).T
+    # turbine_turb_intensities = np.array(turbine_turb_intensities).T
         
     # save case data as dataframe
     wake_field_data = {
@@ -241,11 +239,11 @@ def sim_func(case_idx, case):
         'FreestreamWindSpeed': freestream_wind_speed,
         'FreestreamWindDir': freestream_wind_dir
     }
-    for t_idx, t in enumerate(upstream_turbine_indices + downstream_turbine_indices):
+    for t in range(n_turbines):
         wake_field_data = {**wake_field_data,
             f'TurbineWindSpeeds_{t}': turbine_wind_speeds[:, t],
-            f'YawAngles_{t}': yaw_angles[:, t_idx],
-            f'AxIndFactors_{t}': ai_factors[:, t_idx]             
+            f'YawAngles_{t}': yaw_angles[:, t],
+            f'AxIndFactors_{t}': ai_factors[:, t]
         }
 
     wake_field_df = pd.DataFrame(data=wake_field_data)
