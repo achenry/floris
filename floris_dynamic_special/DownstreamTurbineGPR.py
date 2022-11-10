@@ -49,11 +49,11 @@ if sys.platform == 'darwin':
     FIG_DIR = './figs'
 elif sys.platform == 'linux':
     FARM_LAYOUT = '9turb'
-    SAVE_DIR = f'/scratch/alpine/aohe7145/wake_gp/{FARM_LAYOUT}_wake_field_cases'
+    SAVE_DIR = f'/scratch/summit/aohe7145/wake_gp/{FARM_LAYOUT}_wake_field_cases'
     FLORIS_DIR = f'./{FARM_LAYOUT}_floris_input.json'
     BASE_MODEL_FLORIS_DIR = f'./{FARM_LAYOUT}_base_model_floris_input.json'
-    DATA_DIR = f'/scratch/alpine/aohe7145/wake_gp/data'
-    FIG_DIR = f'/scratch/alpine/aohe7145/wake_gp/figs'
+    DATA_DIR = f'/scratch/summit/aohe7145/wake_gp/data'
+    FIG_DIR = f'/scratch/summit/aohe7145/wake_gp/figs'
 
 # TODO
 # 1) generate datasets with layout as in Jean's SOWFA data, test and plot on mac for 2 turb case, run and save on eagle for 9 turb case

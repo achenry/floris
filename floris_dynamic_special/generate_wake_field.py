@@ -27,9 +27,9 @@ if sys.platform == 'darwin':
     fig_dir = './figs'
 elif sys.platform == 'linux':
     FARM_LAYOUT = '9turb'
-    save_dir = f'/scratch/alpine/aohe7145/wake_gp/{FARM_LAYOUT}_wake_field_cases'
-    data_dir = f'/scratch/alpine/aohe7145/wake_gp/data'
-    fig_dir = f'/scratch/alpine/aohe7145/wake_gp/figs'
+    save_dir = f'/scratch/summit/aohe7145/wake_gp/{FARM_LAYOUT}_wake_field_cases'
+    data_dir = f'/scratch/summit/aohe7145/wake_gp/data'
+    fig_dir = f'/scratch/summit/aohe7145/wake_gp/figs'
 
 # ********** #
 def step_change(vals, T, dt):
