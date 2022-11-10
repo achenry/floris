@@ -12,24 +12,19 @@ Need csv containing 'true' wake characteristics at each turbine (variables) at e
 
 # from defusedxml import DTDForbidden
 import matplotlib.pyplot as plt
-# import matplotlib.animation as ani
 import numpy as np
 from floridyn import tools as wfct # Incoming con
 import pandas as pd
-from weis.aeroelasticse.CaseGen_General import CaseGen_General
-# from floridyn_special.tools.visualization import visualize_cut_plane
-# import pickle
 import os
 import sys
-# import multiprocessing as mp
 from multiprocessing import Pool
+from weis.aeroelasticse.CaseGen_General import CaseGen_General
 
 if sys.platform == 'darwin':
     FARM_LAYOUT = '2turb'
     save_dir = f'./{FARM_LAYOUT}_wake_field_cases'
     data_dir = './data'
     fig_dir = './figs'
-    DEBUG = True
     TOTAL_TIME = 600  # five minutes
 elif sys.platform == 'linux':
     FARM_LAYOUT = '9turb'
@@ -37,7 +32,8 @@ elif sys.platform == 'linux':
     data_dir = f'/scratch/alpine/aohe7145/wake_gp/data'
     fig_dir = f'/scratch/alpine/aohe7145/wake_gp/figs'
     TOTAL_TIME = 600  # ten minutes
-    DEBUG = False
+
+
 
 # ********** #
 def step_change(vals, T, dt):
@@ -62,7 +58,8 @@ DEFAULT_YAW_ANGLE = 0
 N_SEEDS = 1
 WS_TI = 0
 WD_TI = 0
-DEBUG = False
+DEBUG = len(sys.argv) > 1 and sys.argv[1] == 'debug'
+print('debug', DEBUG)
 
 # hold constant over simulation time span
 FREESTREAM_WIND_SPEEDS = [step_change([val], TOTAL_TIME, DT) for val in ([8] if DEBUG else [8, 10, 12])]
@@ -142,7 +139,7 @@ n_cases = len(case_name_list)
 # **************************************** Simulation **************************************** #
 
 def sim_func(case_idx, case):
-
+    print(f'Simulating case #{case_idx}')
 # for case_idx, case in enumerate(case_list):
     
     # Initialize
@@ -336,7 +333,7 @@ if __name__ == '__main__':
     dfs, horizontal_planes, y_planes, cross_planes = [r[0] for r in res], [r[1] for r in res], [r[2] for r in res], [r[3] for r in res]
     pool.close()
                                                                                                          
-    plot_ts(dfs, horizontal_planes, y_planes, cross_planes, upstream_turbine_indices, downstream_turbine_indices)
+    # plot_ts(dfs, horizontal_planes, y_planes, cross_planes, upstream_turbine_indices, downstream_turbine_indices)
     
     plt.show()
     plt.savefig(os.path.join(fig_dir, 'wake_data.png'))
