@@ -112,7 +112,7 @@ cases = [{'kernel': default_kernel(), 'max_training_size': default_max_training_
 
 def initialize(full_offline_measurements_df, system_fi, k_delay, noise_std, max_training_size, kernel,
                n_test_points=GP_CONSTANTS['N_TEST_POINTS']):
-    
+    print('Initializing GPs')
     gprs = init_gprs(system_fi, kernel=kernel, k_delay=k_delay, max_training_size=max_training_size)
 
     # add noise to Turbine Wind Speed measurements
@@ -122,6 +122,8 @@ def initialize(full_offline_measurements_df, system_fi, k_delay, noise_std, max_
 
         k_to_add, effective_dk, reduced_effective_dk, history_exists = \
             gp.check_history(noisy_measurements_df, system_fi, k_delay=k_delay, dt=GP_CONSTANTS['DT'])
+
+        print(noisy_measurements_df.index[-1], effective_dk, gp.turbine_index)
 
         if not history_exists:
             continue
