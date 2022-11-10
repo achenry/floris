@@ -18,6 +18,7 @@ from plotting import plot_training_data, plot_score, plot_std_evolution, plot_ts
 import matplotlib.animation as animation
 from matplotlib.animation import FuncAnimation, FFMpegWriter
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel, Matern
+import sys
 
 FIGSIZE = (30, 21)
 COLOR_1 = 'darkgreen'
@@ -58,7 +59,8 @@ RUN_GP = True
 PLOT_GP = False
 TRAIN_ONLINE = True
 FIT_ONLINE = True
-DEBUG = False
+DEBUG = len(sys.argv) > 1 and sys.argv[1] == 'debug'
+print('debug', DEBUG)
 
 # construct case hierarchy
 default_kernel = lambda: ConstantKernel() * RBF()

@@ -21,7 +21,7 @@ from multiprocessing import Pool
 from CaseGen_General import CaseGen_General
 
 if sys.platform == 'darwin':
-    FARM_LAYOUT = '2turb'
+    FARM_LAYOUT = '9turb'
     save_dir = f'./{FARM_LAYOUT}_wake_field_cases'
     data_dir = './data'
     fig_dir = './figs'
@@ -165,8 +165,8 @@ def sim_func(case_idx, case):
     # define yaw angle time series
     yaw_angles = DEFAULT_YAW_ANGLE * np.ones((int(TOTAL_TIME / DT), n_turbines))
     ai_factors = DEFAULT_AX_IND_FACTOR * np.ones((int(TOTAL_TIME / DT), n_turbines))
-    yaw_angles[:, upstream_turbine_indices] = [case[f'yaw_angles_{t}'] for t in upstream_turbine_indices] # np.tile([case[f'yaw_angles_{t}'] for t in upstream_turbine_indices], (int(TOTAL_TIME / DT), 1))
-    ai_factors[:, upstream_turbine_indices] = [case[f'ax_ind_factors_{t}'] for t in upstream_turbine_indices] # np.tile([case[f'ax_ind_factors_{t}'] for t in upstream_turbine_indices], (int(TOTAL_TIME / DT), 1))
+    yaw_angles[:, upstream_turbine_indices] = np.hstack([case[f'yaw_angles_{t}'] for t in upstream_turbine_indices]) # np.tile([case[f'yaw_angles_{t}'] for t in upstream_turbine_indices], (int(TOTAL_TIME / DT), 1))
+    ai_factors[:, upstream_turbine_indices] = np.hstack([case[f'ax_ind_factors_{t}'] for t in upstream_turbine_indices]) # np.tile([case[f'ax_ind_factors_{t}'] for t in upstream_turbine_indices], (int(TOTAL_TIME / DT), 1))
     
     fi.reinitialize_flow_field(wind_speed=ws_ts['mean'][0], wind_direction=wd_ts['mean'][0]) 
     fi.calculate_wake(yaw_angles=yaw_angles[0, :], axial_induction=ai_factors[0, :])
