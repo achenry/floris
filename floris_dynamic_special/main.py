@@ -309,8 +309,8 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
             assert online_measurements_df['Time'].iloc[-1] == k_gp
             assert (np.diff(online_measurements_df.index) == 1).all()
 
-            # if 2 times enough samples have been added to to_add_measurements to make a batch
-            if len(k_buffered) >= 2 * batch_size and TRAIN_ONLINE:
+            # if enough samples have been added to to_add_measurements to make a batch
+            if len(k_buffered) >= batch_size and TRAIN_ONLINE:
 
                 # drop the historic inputs we no longer need for ANY downstream turbine
                 # i.e. keep the last max(effective_dk * k_delay) for all downstream turbines
@@ -340,8 +340,8 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                     min_k_needed.update(list(
                         k_buffered - (effective_dk * GP_CONSTANTS['K_DELAY'])))
 
-                    # if not history_exists, want to have at least 2 * the required batch of new datapoints to choose from
-                    if len(k_to_add) < 2 * batch_size:
+                    # if not history_exists, want to have at least the required batch of new datapoints to choose from
+                    if len(k_to_add) < batch_size:
                         print(f'Not enough history available to fit {gp_idx} th GP with batch of samples, adding to buffer instead')
                         continue
 
@@ -350,7 +350,6 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                         del k_buffered[k_buffered.index(k)]
 
                     # add new online measurements to existing set of measurements if there exists enough historic measurements
-
                     unadded_k_idx = [k_idx for k_idx, k in k_to_add.iteritems() if k not in gprs[gp_idx].k_train_replay + gprs[gp_idx].k_train]
                     potential_X_train_new, potential_y_train_new \
                         = gprs[gp_idx].prepare_data(online_measurements_df,

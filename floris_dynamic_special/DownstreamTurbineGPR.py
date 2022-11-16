@@ -61,7 +61,7 @@ elif sys.platform == 'linux':
 # 3) formulate and implement exploration maximization algorithm
 
 class DownstreamTurbineGPR:
-    def __init__(self, kernel, optimizer,
+    def __init__(self, kernel,
                  max_training_size, input_labels, n_outputs, turbine_index,
                  upstream_turbine_indices, model_type):
         self.input_labels = input_labels
@@ -82,8 +82,7 @@ class DownstreamTurbineGPR:
         self.gpr = GaussianProcessRegressor(
             kernel=kernel,
             optimizer=optimizer, 
-            normalize_y=True, n_restarts_optimizer=10, alpha=1e-10, 
-            random_state=0)
+            normalize_y=True, n_restarts_optimizer=10)
         self.turbine_index = turbine_index
         self.upstream_turbine_indices = upstream_turbine_indices
         self.model_type = model_type
@@ -503,7 +502,7 @@ def init_gprs(system_fi, kernel, k_delay,
         turbine_input_labels = [l for l in input_labels
                                 if 'TurbineWindSpeeds' not in l or int(l.split('_')[1]) in upstream_turbine_indices]
 
-        gpr = DownstreamTurbineGPR(kernel, optimizer,
+        gpr = DownstreamTurbineGPR(kernel,
                                    max_training_size=max_training_size, 
                                    input_labels=turbine_input_labels, n_outputs=1,
                                    turbine_index=ds_t_idx,
