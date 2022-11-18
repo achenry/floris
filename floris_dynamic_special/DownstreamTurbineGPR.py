@@ -246,7 +246,7 @@ class DownstreamTurbineGPR:
 
         # order from highest to lowest predicted standard deviation
         new_std_train = [tup[2] for tup in new_dps]
-        p_choice = new_std_train / sum(new_std_train)
+        p_choice = np.exp(new_std_train) / sum(np.exp(new_std_train)) # soft-max exponential
 
         idx_choice = np.random.choice(list(range(len(new_dps))), n_datapoints, replace=False, p=p_choice)
 
