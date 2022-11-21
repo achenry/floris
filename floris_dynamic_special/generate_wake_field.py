@@ -56,6 +56,7 @@ WS_TI = 0
 WD_TI = 0
 DEBUG = len(sys.argv) > 1 and sys.argv[1] == 'debug'
 print('debug', DEBUG)
+N_CASES = 2 if DEBUG else 5000
 
 TOTAL_TIME = 200 if DEBUG else 600
 
@@ -65,7 +66,8 @@ FREESTREAM_WIND_DIRS = [step_change([val], TOTAL_TIME, DT) for val in ([260] if 
 
 # change over course of single simulation to learn how wake fields propagate over time
 YAW_ANGLES = [step_change([0.0, 7.5, 15], TOTAL_TIME, DT)] if DEBUG else \
-    [step_change([-20, -15, -10], TOTAL_TIME, DT),
+    [
+    step_change([-20, -15, -10], TOTAL_TIME, DT),
     step_change([-10, -15, -20], TOTAL_TIME, DT),
     step_change([20, 15, 10], TOTAL_TIME, DT),
     step_change([10, 15, 20], TOTAL_TIME, DT),
@@ -73,14 +75,17 @@ YAW_ANGLES = [step_change([0.0, 7.5, 15], TOTAL_TIME, DT)] if DEBUG else \
      step_change([10, 0, -10], TOTAL_TIME, DT),
      step_change([10], TOTAL_TIME, DT),
      step_change([-10], TOTAL_TIME, DT),
-     step_change([0], TOTAL_TIME, DT)]
+     step_change([0], TOTAL_TIME, DT)
+    ]
 AX_IND_FACTORS = [step_change([0.11, 0.22, 0.22, 0.33], TOTAL_TIME, DT)] if DEBUG else \
-    [step_change([0.11, 0.22, 0.22, 0.33], TOTAL_TIME, DT),
+    [
+     step_change([0.11, 0.22, 0.22, 0.33], TOTAL_TIME, DT),
      step_change([0.33, 0.33, 0.22, 0.11], TOTAL_TIME, DT),
      step_change([0.22, 0.22, 0.33, 0.11], TOTAL_TIME, DT),
      step_change([0.11], TOTAL_TIME, DT),
      step_change([0.33], TOTAL_TIME, DT),
-     step_change([0.22], TOTAL_TIME, DT)]
+     step_change([0.22], TOTAL_TIME, DT)
+    ]
 
 # **************************************** Initialization **************************************** #
 # Initialize the FLORIS interface fi
@@ -128,7 +133,7 @@ for t_idx, t in enumerate(upstream_turbine_indices):
                                           'vals': AX_IND_FACTORS} 
                                                 #    step_change([0.33, 0.22, 0.11], TOTAL_TIME, DT)]} #[0.22, 0.33, 0.67]}
 
-case_list, case_name_list = CaseGen_General(case_inputs, dir_matrix='.', namebase='wake_field', save_matrix=True)
+case_list, case_name_list = CaseGen_General(case_inputs, dir_matrix='.', namebase='wake_field', save_matrix=False, n_cases=N_CASES)
 case_list = np.repeat(case_list, N_SEEDS)
 case_name_list = np.concatenate([[name] * N_SEEDS for name in case_name_list])
 n_cases = len(case_name_list)

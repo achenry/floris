@@ -2,7 +2,6 @@ import os, itertools
 import numpy as np
 from FileTools import save_yaml
 
-
 def save_case_matrix_direct(case_list, dir_matrix):
 	### assumes all elements of the list are dict for that case that has the same keys!
 	if not os.path.exists(dir_matrix):
@@ -140,7 +139,7 @@ def convert_str(val):
 		return val
 
 
-def CaseGen_General(case_inputs, dir_matrix='', namebase='', save_matrix=True):
+def CaseGen_General(case_inputs, dir_matrix='', namebase='', n_cases=-1, save_matrix=True):
 	""" Cartesian product to enumerate over all combinations of set of variables that are changed together"""
 	
 	# put case dict into lists
@@ -152,14 +151,18 @@ def CaseGen_General(case_inputs, dir_matrix='', namebase='', save_matrix=True):
 	group_set = list(set(change_group))
 	group_len = [len(change_vals[change_group.index(i)]) for i in group_set]
 	
-	# case matrix, as indices
-	group_idx = [range(n) for n in group_len]
-	matrix_idx = list(itertools.product(*group_idx))
-	
+	if n_cases > -1:
+		matrix_idx = [tuple(el) for el in np.random.randint(low=group_len, size=(n_cases, len(group_len)))]
+	else:
+		# case matrix, as indices
+		group_idx = [range(n) for n in group_len]
+		# matrix_idx = list(itertools.product(*group_idx))
+		matrix_idx = itertools.product(*group_idx)
+
 	# index of each group
 	matrix_group_idx = [np.where([group_i == group_j for group_j in change_group])[0].tolist() for group_i in group_set]
 	
-	# build final matrix of variable values
+	# build final matrix of variable values)
 	matrix_out = []
 	for i, row in enumerate(matrix_idx):
 		row_out = [None] * len(change_vars)
