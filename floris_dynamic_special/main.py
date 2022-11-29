@@ -80,6 +80,7 @@ if DEBUG:
     BATCH_SIZE_VALS = [default_batch_size]
     TMAX = 100
     GP_CONSTANTS['PROPORTION_TRAINING_DATA'] = 0.5
+    N_TOTAL_DATASETS = 2
 else:
     KERNELS = [lambda: ConstantKernel() * RBF(), lambda: ConstantKernel() * Matern()]
     MAX_TRAINING_SIZE_VALS = [50, 100, 200, 400]
@@ -87,6 +88,7 @@ else:
     K_DELAY_VALS = [2, 4, 6, 8]
     BATCH_SIZE_VALS = [1, 5, 10, 25]
     TMAX = 600
+    N_TOTAL_DATASETS = 500
 
 cases = [{'kernel': default_kernel(), 'max_training_size': default_max_training_size,
           'noise_std': default_noise_std, 'k_delay': default_k_delay, 'batch_size': x} for x in BATCH_SIZE_VALS] + \
@@ -529,7 +531,7 @@ if __name__ == '__main__':
         print('Reading offline training data')
 
         # consider the following time-series cases
-        df_indices = None if not DEBUG else [0, 1] # np.random.randint(0, 80, 5) #list(range(20))s
+        df_indices = N_TOTAL_DATASETS # np.random.randint(0, 80, 5) #list(range(20))s
         wake_field_dfs = get_dfs(df_indices, proportion_training_data=GP_CONSTANTS['PROPORTION_TRAINING_DATA'])
         full_offline_measurements_df = pd.concat(wake_field_dfs['train'], ignore_index=True)
 

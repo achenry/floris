@@ -8,7 +8,20 @@ import os
 
 def get_paths(save_dir, df_indices):
     paths = []
-    n_cases = len(df_indices) if df_indices is not None else -1
+    n_total_paths = 0
+    for root, _, files in os.walk(save_dir):
+        for filename in files:
+            if 'case' in filename and 'csv' in filename:
+               n_total_paths += 1
+    
+    if type(df_indices) is int:
+        n_cases = df_indices
+        df_indices = np.random.randint(n_total_paths, size=(n_cases,))
+    elif hasattr(df_indices, '__len__'):
+        n_cases = len(df_indices)
+    elif df_indices is None:
+        n_cases = -1
+        
     for root, _, files in os.walk(save_dir):
         for filename in files:
             if len(paths) == n_cases:
@@ -39,11 +52,9 @@ def generate_input_labels(upstream_turbine_indices, k_delay):
         for idx in range(k_delay, -1, -1):
             input_labels.append(f'TurbineWindSpeeds_{t}_minus{idx}')
      
-    for t in upstream_turbine_indices:
         for idx in range(k_delay, -1, -1):
             input_labels.append(f'AxIndFactors_{t}_minus{idx}')
             
-    for t in upstream_turbine_indices:
         for idx in range(k_delay, -1, -1):
             input_labels.append(f'YawAngles_{t}_minus{idx}')
 
