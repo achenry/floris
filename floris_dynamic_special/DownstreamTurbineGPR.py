@@ -135,7 +135,7 @@ class DownstreamTurbineGPR:
         return k_to_add, effective_dk, reduced_effective_dk, history_exists
 
     def prepare_data(self, measurements_df, k_to_add, effective_dk, k_delay=GP_CONSTANTS['K_DELAY'], y_modeled=None):
-        input_labels = generate_input_labels(self.upstream_turbine_indices, k_delay)
+        # input_labels = generate_input_labels(self.upstream_turbine_indices, k_delay)
         unscaled_X = np.vstack([generate_input_vector(
                 measurements_df, k_idx, self.upstream_turbine_indices, effective_dk.loc[k_idx], k_delay)[1]
              for k_idx in k_to_add.index])
@@ -148,7 +148,7 @@ class DownstreamTurbineGPR:
         X = self.X_scalar.transform(unscaled_X)
         y = self.y_scalar.transform(unscaled_y)
 
-        return X, y, input_labels
+        return X, y
 
     def add_data(self, new_X_train, new_y_train, new_k_train, is_online):
 
