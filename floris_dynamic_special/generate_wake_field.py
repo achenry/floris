@@ -56,13 +56,13 @@ WS_TI = 0
 WD_TI = 0
 DEBUG = len(sys.argv) > 1 and sys.argv[1] == 'debug'
 print('debug', DEBUG)
-N_CASES = 2 if DEBUG else 5000
+N_CASES = 9 if DEBUG else 5000
 
-TOTAL_TIME = 200 if DEBUG else 600
+TOTAL_TIME = 300 if DEBUG else 600
 
 # hold constant over simulation time span
-FREESTREAM_WIND_SPEEDS = [step_change([val], TOTAL_TIME, DT) for val in ([8, 10] if DEBUG else [8, 10, 12])]
-FREESTREAM_WIND_DIRS = [step_change([val], TOTAL_TIME, DT) for val in ([260] if DEBUG else [250, 260, 270])]
+FREESTREAM_WIND_SPEEDS = [step_change([val], TOTAL_TIME, DT) for val in ([8, 10, 12] if DEBUG else [8, 10, 12])]
+FREESTREAM_WIND_DIRS = [step_change([val], TOTAL_TIME, DT) for val in ([250, 260, 270] if DEBUG else [250, 260, 270])]
 
 # change over course of single simulation to learn how wake fields propagate over time
 YAW_ANGLES = [step_change([0.0, 7.5, 15], TOTAL_TIME, DT)] if DEBUG else \
@@ -99,6 +99,10 @@ floris_dir = f"./{FARM_LAYOUT}_floris_input.json"
 fi = wfct.floris_interface.FlorisInterface(floris_dir)
 fi.reinitialize_flow_field(wind_speed=8, wind_direction=270) 
 fi.calculate_wake()
+assert fi.get_model_parameters()["Wake Deflection Parameters"]["use_secondary_steering"] == False
+assert "use_yaw_added_recovery" not in fi.get_model_parameters()["Wake Deflection Parameters"] or fi.get_model_parameters()["Wake Deflection Parameters"]["use_yaw_added_recovery"] == False
+assert "calculate_VW_velocities" not in fi.get_model_parameters()["Wake Deflection Parameters"] or fi.get_model_parameters()["Wake Deflection Parameters"]["calculate_VW_velocities"] == False
+
 n_turbines = len(fi.floris.farm.turbines)
 
 # Reinitialize

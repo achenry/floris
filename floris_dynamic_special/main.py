@@ -22,6 +22,9 @@ from matplotlib.animation import FuncAnimation, FFMpegWriter
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel, Matern
 import sys
 
+# TODO
+# check that enable_secondary_steering, enable_yaw_added_recovery, enable_transverse_velocity are false
+
 FIGSIZE = (30, 21)
 COLOR_1 = 'darkgreen'
 COLOR_2 = 'indigo'
@@ -63,6 +66,9 @@ TRAIN_ONLINE = True
 FIT_ONLINE = True
 DEBUG = len(sys.argv) > 1 and sys.argv[1] == 'debug'
 print('debug', DEBUG)
+PLOT_GP = len(sys.argv) > 1 and sys.argv[1] == 'plot'
+print('plot_gp', PLOT_GP)
+RUN_GP = not PLOT_GP
 
 # construct case hierarchy
 default_kernel = lambda: ConstantKernel() * RBF()
@@ -78,9 +84,9 @@ if DEBUG:
     NOISE_STD_VALS = [default_noise_std]
     K_DELAY_VALS = [default_k_delay]
     BATCH_SIZE_VALS = [default_batch_size]
-    TMAX = 100
-    GP_CONSTANTS['PROPORTION_TRAINING_DATA'] = 0.5
-    N_TOTAL_DATASETS = 2
+    TMAX = 300
+    GP_CONSTANTS['PROPORTION_TRAINING_DATA'] = 6 / 9
+    N_TOTAL_DATASETS = 9
 else:
     KERNELS = [lambda: ConstantKernel() * RBF(), lambda: ConstantKernel() * Matern()]
     MAX_TRAINING_SIZE_VALS = [50, 100, 200, 400]
@@ -88,6 +94,7 @@ else:
     K_DELAY_VALS = [2, 4, 6, 8]
     BATCH_SIZE_VALS = [1, 5, 10, 25]
     TMAX = 600
+    GP_CONSTANTS['PROPORTION_TRAINING_DATA'] = 4 / 5
     N_TOTAL_DATASETS = 500
 
 cases = [{'kernel': default_kernel(), 'max_training_size': default_max_training_size,
@@ -148,6 +155,7 @@ def initialize(full_offline_measurements_df, system_fi, k_delay, noise_std, max_
                             for t_idx in model_fi.turbine_indices],
                 axial_induction=[noisy_measurements_df.loc[0, f'AxIndFactors_{t_idx}']
                                  for t_idx in model_fi.turbine_indices])
+            
 
             y_modeled = []
             for k in noisy_measurements_df.index:
@@ -523,9 +531,19 @@ if __name__ == '__main__':
 
         # Fetch wind farm system layout information, floris interface used to simulate 'true' wind farm
         system_fi = get_system_info()
+        assert system_fi.get_model_parameters()["Wake Deflection Parameters"]["use_secondary_steering"] == False
+        assert "use_yaw_added_recovery" not in system_fi.get_model_parameters()["Wake Deflection Parameters"] or \
+               system_fi.get_model_parameters()["Wake Deflection Parameters"]["use_yaw_added_recovery"] == False
+        assert "calculate_VW_velocities" not in system_fi.get_model_parameters()["Wake Deflection Parameters"] or \
+               system_fi.get_model_parameters()["Wake Deflection Parameters"]["calculate_VW_velocities"] == False
 
         # Fetch base wind farm model i.e. assumed wake model, where GP learns error between measurements and model
         model_fi = get_base_model()
+        assert model_fi.get_model_parameters()["Wake Deflection Parameters"]["use_secondary_steering"] == False
+        assert "use_yaw_added_recovery" not in model_fi.get_model_parameters()["Wake Deflection Parameters"] or \
+               model_fi.get_model_parameters()["Wake Deflection Parameters"]["use_yaw_added_recovery"] == False
+        assert "calculate_VW_velocities" not in model_fi.get_model_parameters()["Wake Deflection Parameters"] or \
+               model_fi.get_model_parameters()["Wake Deflection Parameters"]["calculate_VW_velocities"] == False
         
         # Read raw offline training data
         print('Reading offline training data')
@@ -536,7 +554,7 @@ if __name__ == '__main__':
         full_offline_measurements_df = pd.concat(wake_field_dfs['train'], ignore_index=True)
 
         # time, X, y, current_input_labels, input_labels \
-        if DEBUG:
+        if DEBUG and False:
             # case_data = {}
             # for k_delay in K_DELAY_VALS:
             #     case_data[k_delay] = get_data(wake_field_dfs, system_fi,
@@ -579,7 +597,7 @@ if __name__ == '__main__':
         for case_idx, case in enumerate(cases):
             # Run simulations
 
-            if DEBUG:
+            if DEBUG and False:
                 simulations_train = []
                 for df_idx, df in enumerate(wake_field_dfs['train']):
                     run_single_simulation(case_idx, case_gprs[case_idx], df, df_idx,
