@@ -129,10 +129,10 @@ class DownstreamTurbineGPR:
         # in measurements_df, add the new training inputs
         k_idx_to_add = new_current_rows['Time'] >= (k_delay * effective_dk)
         k_to_add = (new_current_rows.loc[k_idx_to_add, 'Time'] // dt).astype(int)
-        reduced_effective_dk = effective_dk.loc[k_idx_to_add]
+        effective_dk_to_add = effective_dk.loc[k_idx_to_add]
         history_exists = len(k_to_add) > 0
 
-        return k_to_add, effective_dk, reduced_effective_dk, history_exists
+        return k_to_add, effective_dk, effective_dk_to_add, history_exists
 
     def prepare_data(self, measurements_df, k_to_add, effective_dk, k_delay=GP_CONSTANTS['K_DELAY'], y_modeled=None):
         # input_labels = generate_input_labels(self.upstream_turbine_indices, k_delay)

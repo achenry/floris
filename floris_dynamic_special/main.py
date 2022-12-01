@@ -340,7 +340,7 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                         y_train_unique.reshape((-1, 1))).reshape((1, -1))[0], y_train_count)), key=lambda tup: tup[0]))
                     # x = y_scalar.inverse_transform(y_train_unique.reshape((-1, 1))).squeeze()
 
-                    k_to_add, effective_dk, reduced_effective_dk, history_exists \
+                    k_to_add, effective_dk, effective_dk_to_add, history_exists \
                         = gprs[gp_idx].check_history(buffered_measurements, system_fi,
                                                      k_delay=k_delay,
                                                      dt=GP_CONSTANTS['DT'])
@@ -350,17 +350,20 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                     min_k_needed.update(list(
                         k_buffered - (effective_dk * GP_CONSTANTS['K_DELAY'])))
 
-                    # if not history_exists, want to have at least the required batch of new datapoints to choose from
-                    if len(k_to_add) < batch_size:
-                        print(f'Not enough history available to fit {gp_idx} th GP with batch of samples, adding to buffer instead')
-                        continue
-
-                    print(f'Enough history available to fit {gp_idx} th GP with {k_to_add} th samples')
-                    for k in k_to_add:
-                        del k_buffered[k_buffered.index(k)]
+                    # for k in k_to_add:
+                    #     del k_buffered[k_buffered.index(k)]
 
                     # add new online measurements to existing set of measurements if there exists enough historic measurements
                     unadded_k_idx = [k_idx for k_idx, k in k_to_add.iteritems() if k not in gprs[gp_idx].k_train_replay + gprs[gp_idx].k_train]
+                    
+                    # if not history_exists, want to have at least the required batch of new datapoints to choose from
+                    
+                    if len(unadded_k_idx) < batch_size:
+                        print(f'Not enough history available to fit {gp_idx} th GP with batch of samples, adding to buffer instead')
+                        continue
+
+                    print(f'Enough history available to fit {gp_idx} th GP with {len(unadded_k_idx)} th samples')
+                    
                     potential_X_train_new, potential_y_train_new \
                         = gprs[gp_idx].prepare_data(online_measurements_df,
                                                     k_to_add.loc[unadded_k_idx],
@@ -450,6 +453,8 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
 
     with open(os.path.join(SAVE_DIR, f'simulation_data_{dataset_type}_case-{case_idx}_df-{simulation_idx}'), 'wb') as fp:
         pickle.dump(results, fp)
+        
+    return results
 
 
 if __name__ == '__main__':
@@ -597,18 +602,18 @@ if __name__ == '__main__':
         for case_idx, case in enumerate(cases):
             # Run simulations
 
-            if DEBUG and False:
+            if DEBUG:
                 simulations_train = []
                 for df_idx, df in enumerate(wake_field_dfs['train']):
-                    run_single_simulation(case_idx, case_gprs[case_idx], df, df_idx,
+                    simulations_train.append(run_single_simulation(case_idx, case_gprs[case_idx], df, df_idx,
                                                    current_input_labels,
-                                                   case['k_delay'], case['noise_std'], case['batch_size'], 'train')
+                                                   case['k_delay'], case['noise_std'], case['batch_size'], 'train'))
 
                 simulations_test = []
                 for df_idx, df in enumerate(wake_field_dfs['test']):
-                    run_single_simulation(case_idx, case_gprs[case_idx], df, df_idx + len(wake_field_dfs['train']),
+                    simulations_test.append(run_single_simulation(case_idx, case_gprs[case_idx], df, df_idx + len(wake_field_dfs['train']),
                                                    current_input_labels,
-                                                   case['k_delay'], case['noise_std'], case['batch_size'], 'test')
+                                                   case['k_delay'], case['noise_std'], case['batch_size'], 'test'))
 
             else:
                 pool = Pool(mp.cpu_count())
