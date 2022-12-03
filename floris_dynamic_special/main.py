@@ -40,35 +40,16 @@ mpl.rcParams.update({'font.size': SMALL_FONT_SIZE,
 					 'figure.autolayout': True,
                      'lines.markersize':10})
 
-# TODO results
-#  1) train offline, run simulations for training and testing datasets,
-#     plot true vs predicted values of downstream TurbineWindSpeeds
-
-# TODO
-#  1) offline learning for same training data and base models - value model type X
-#  2) offline learning for same training data and base models - error model type X
-#  3) offline learning for different training data and base models for learning error X
-#  4) offline learning with noisy measurements (NOISE_STD != 0)
-#  5) Test Online data selection algorithm (choose highest std, drop randomly and plot cluster of evolving data points X
-#  6) Test variable wind speed in generate_wake_field.py (WS_TI != 0) OR just assume you've filtered it
-#  7) online learning with noisy data (NOISE_STD != 0)
-#  8) Test for different kernel functions, values of MAX_TRAINING_SIZE, NOISE_STD, k_delay, batch size
-#  9) Test for 9 x 9 Wind Farm layout
-#  10) keep bank of historic measurements that have not been added to training data and randomly select from this, or select most optimal for reducing overall variance X
-
-# TODO run yaw/ax ind factor controllers with GP estimate vs model
-# TODO RMSE mean vs different kernel functions, or exploration vs. exploitation parameter
-
 RUN_MPC = False
 RUN_GP = True
-PLOT_GP = True
+PLOT_GP = False
 TRAIN_ONLINE = True
 FIT_ONLINE = True
 DEBUG = len(sys.argv) > 1 and sys.argv[1] == 'debug'
 print('debug', DEBUG)
-PLOT_GP = len(sys.argv) > 1 and sys.argv[1] == 'plot'
+# PLOT_GP = len(sys.argv) > 1 and sys.argv[1] == 'plot'
 print('plot_gp', PLOT_GP)
-RUN_GP = not PLOT_GP
+# RUN_GP = not PLOT_GP
 
 # construct case hierarchy
 default_kernel = lambda: ConstantKernel() * RBF()
@@ -85,8 +66,8 @@ if DEBUG:
     K_DELAY_VALS = [default_k_delay]
     BATCH_SIZE_VALS = [default_batch_size]
     TMAX = 300
-    GP_CONSTANTS['PROPORTION_TRAINING_DATA'] = 6 / 9
-    N_TOTAL_DATASETS = 9
+    GP_CONSTANTS['PROPORTION_TRAINING_DATA'] = 1 #6 / 9
+    N_TOTAL_DATASETS = 3
 else:
     KERNELS = [lambda: ConstantKernel() * RBF(), lambda: ConstantKernel() * Matern()]
     MAX_TRAINING_SIZE_VALS = [50, 100, 200, 400]
@@ -94,7 +75,7 @@ else:
     K_DELAY_VALS = [2, 4, 6, 8]
     BATCH_SIZE_VALS = [1, 5, 10, 25]
     TMAX = 600
-    GP_CONSTANTS['PROPORTION_TRAINING_DATA'] = 4 / 5
+    GP_CONSTANTS['PROPORTION_TRAINING_DATA'] = 1 # 4 / 5
     N_TOTAL_DATASETS = 500
 
 cases = [{'kernel': default_kernel(), 'max_training_size': default_max_training_size,
@@ -118,6 +99,8 @@ cases = [{'kernel': default_kernel(), 'max_training_size': default_max_training_
 #
 # if not os.path.exists(os.path.join(FIG_DIR)):
 #     os.makedirs(FIG_DIR)
+
+# TODO how to define 'testing data' when GP is trained on the fly?
 
 def initialize(full_offline_measurements_df, system_fi, k_delay, noise_std, max_training_size, kernel,
                n_test_points=GP_CONSTANTS['N_TEST_POINTS']):
@@ -451,8 +434,7 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
     # ani = FuncAnimation(training_fig, animate, frames=len(y_train_frames), interval=25, fargs=[gp_idx])
     # ani.save(os.path.join(FIG_DIR, f'training_ani_case-{case_idx}_df-{simulation_idx}_gp.mp4'))
 
-    with open(os.path.join(SAVE_DIR, f'simulation_data_{dataset_type}_case-{case_idx}_df-{simulation_idx}'), 'wb') as fp:
-        pickle.dump(results, fp)
+    pd.DataFrame(results).to_csv(os.path.join(SAVE_DIR, f'simulation_data_{dataset_type}_case-{case_idx}_df-{simulation_idx}.csv'))
         
     return results
 
@@ -608,7 +590,7 @@ if __name__ == '__main__':
                     simulations_train.append(run_single_simulation(case_idx, case_gprs[case_idx], df, df_idx,
                                                    current_input_labels,
                                                    case['k_delay'], case['noise_std'], case['batch_size'], 'train'))
-
+                
                 simulations_test = []
                 for df_idx, df in enumerate(wake_field_dfs['test']):
                     simulations_test.append(run_single_simulation(case_idx, case_gprs[case_idx], df, df_idx + len(wake_field_dfs['train']),
@@ -622,6 +604,7 @@ if __name__ == '__main__':
                                                    current_input_labels,
                                                    case['k_delay'], case['noise_std'], case['batch_size'], 'train')
                                                   for df_idx, df in enumerate(wake_field_dfs['train'])])
+                # TODO many nan values?
                 simulations_test = pool.starmap(run_single_simulation,
                                                  [(case_idx, case_gprs[case_idx], df, df_idx + len(wake_field_dfs['train']),
                                                    current_input_labels,
@@ -636,12 +619,18 @@ if __name__ == '__main__':
         for root, dir, filenames in os.walk(SAVE_DIR):
             for filename in sorted(filenames):
                 if 'simulation_data' in filename:
-                    if 'train' in filename:
-                        with open(os.path.join(SAVE_DIR, filename), 'rb') as fp:
-                            simulation_results['train'].append(pickle.load(fp))
-                    elif 'test' in filename:
-                        with open(os.path.join(SAVE_DIR, filename), 'rb') as fp:
-                            simulation_results['test'].append(pickle.load(fp))
+                    if '.csv' in filename:
+                        if 'train' in filename:
+                            simulation_results['train'].append(pd.read_csv(os.path.join(SAVE_DIR, filename)))
+                        elif 'test' in filename:
+                            simulation_results['test'].append(pd.read_csv(os.path.join(SAVE_DIR, filename)))
+                    else:
+                        if 'train' in filename:
+                            with open(os.path.join(SAVE_DIR, filename), 'rb') as fp:
+                                simulation_results['train'].append(pickle.load(fp))
+                        elif 'test' in filename:
+                            with open(os.path.join(SAVE_DIR, filename), 'rb') as fp:
+                                simulation_results['test'].append(pickle.load(fp))
 
         ## PLOT RESULTS
         # plot the true vs predicted gp values over the course of the simulation
@@ -675,13 +664,13 @@ if __name__ == '__main__':
 
             return sim_score, turbine_sim_score, turbine_score_mean, turbine_score_std
 
-
+        score_type = 'rmse'
         sim_score, turbine_sim_score, turbine_score_mean, turbine_score_std \
-            = compute_score(system_fi, simulation_results, score_type='r2')
+            = compute_score(system_fi, simulation_results, score_type=score_type)
 
-        score_fig = plot_score(system_fi, turbine_score_mean, turbine_score_std)
+        score_fig = plot_score(system_fi, turbine_score_mean, turbine_score_std, score_type)
         score_fig.show()
-        score_fig.savefig(os.path.join(FIG_DIR, f'rmse.png'))
+        score_fig.savefig(os.path.join(FIG_DIR, f'score.png'))
 
         if len(system_fi.floris.farm.turbines) == 9:
             ds_indices = [4, 7]
@@ -690,9 +679,9 @@ if __name__ == '__main__':
             ds_indices = [1]
 
         # choose training and test datasets with lowest mean rmse over all turbines
-        n_rmse_plots = 2
-        sim_indices = {'train': np.argsort(sim_score['train'])[:n_rmse_plots],
-                       'test': np.argsort(sim_score['test'])[:n_rmse_plots]}
+        n_ts_plots = 2
+        sim_indices = {'train': np.argsort(sim_score['train'])[:n_ts_plots],
+                       'test': np.argsort(sim_score['test'])[:n_ts_plots]}
 
         ts_fig = plot_ts(TMAX, ds_indices, simulation_results, sim_indices)
         ts_fig.show()

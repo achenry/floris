@@ -123,22 +123,30 @@ def plot_measurements(full_offline_measurements_df):
     plt.show()
 
 
-def plot_score(system_fi, turbine_score_mean, turbine_score_std):
+def plot_score(system_fi, turbine_score_mean, turbine_score_std, score_type):
     """
    RMSE mean and std (true turbine effective wind speed vs. GP estimate) over all simulations for
     each downstream turbine
     Returns:
-
+    
     """
-    score_fig, score_ax = plt.subplots(2, 1)
+    n_plots = 2 if len(turbine_score_mean['test']) else 1
+    score_fig, score_ax = plt.subplots(n_plots, 1)
 
     for ax_idx, dataset_type in enumerate(['train', 'test']):
+        if not len(turbine_score_mean[dataset_type]):
+            continue
+            
         score_ax[ax_idx].errorbar(x=system_fi.downstream_turbine_indices,
-                                y=turbine_score_mean[dataset_type], yerr=turbine_score_std[dataset_type])
-        score_ax[ax_idx].set(
-            title=f'Downstream Turbine Effective Wind Speed R2 Score over all {dataset_type.capitalize()}ing Simulations [m/s]')
+                                  y=turbine_score_mean[dataset_type],
+                                  yerr=turbine_score_std[dataset_type],
+                                  fmt='o', color='orange',
+                                  ecolor='lightgreen', elinewidth=5, capsize=10)
+        # score_ax[ax_idx].set(
+        #     title=f'Downstream Turbine Effective Wind Speed {score_type.upper()} Score over all {dataset_type.capitalize()}ing Simulations [m/s]'
+        # )
 
-    score_ax[-1].set(xlabel='Downstream Turbine Index')
+    score_ax[-1].set(xlabel='Turbine Index')
     return score_fig
 
 
@@ -151,33 +159,39 @@ def plot_ts(tmax, ds_indices, simulation_results, sim_indices):
 
     """
     time = np.arange(tmax)
-    ts_fig, ts_ax = plt.subplots(len(sim_indices['train']) + len(sim_indices['test']), 1, sharex=True, sharey=True)
+    ts_fig, ts_ax = plt.subplots(len(ds_indices),
+                                 len(sim_indices['train']) + len(sim_indices['test']),
+                                 sharex=True, sharey=True)
 
-    ax_idx = -1
-    for i, dataset_type in enumerate(['train', 'test']):
-        for j, sim_idx in enumerate(sim_indices[dataset_type]):
-            ax_idx += 1
-            for ds_idx, ds in enumerate(ds_indices):
-                ts_ax[ax_idx].plot(time, simulation_results[dataset_type][sim_idx]['true'][:, ds_idx],
-                                   label=f'Turbine {ds} True')
-                ts_ax[ax_idx].plot(time, simulation_results[dataset_type][sim_idx]['pred'][:, ds_idx],
-                                   label=f'Turbine {ds} Predicted Mean')
-                ts_ax[ax_idx].plot(time, simulation_results[dataset_type][sim_idx]['modeled'][:, ds_idx],
-                                   label=f'Turbine {ds} Base Modeled')
-                ts_ax[ax_idx].scatter(time, simulation_results[dataset_type][sim_idx]['meas'][:, ds_idx], c='r',
-                                      label=f'Turbine {ds} Measurements')
-                # ts_ax_scatter(time, gprs[0].y_train, c='p', label='Training Outputs')
-                ts_ax[ax_idx].fill_between(time, simulation_results[dataset_type][sim_idx]['pred'][:, ds_idx]
-                                           - simulation_results[dataset_type][sim_idx]['std'][:, ds_idx],
-                                           simulation_results[dataset_type][sim_idx]['pred'][:, ds_idx]
-                                           + simulation_results[dataset_type][sim_idx]['std'][:, ds_idx],
-                                           alpha=0.1, label=f'Turbine {ds} Predicted Std. Dev.')
+    for ds_idx, ds in enumerate(ds_indices):
+        ax_idx = -1
+        for i, dataset_type in enumerate(['train', 'test']):
+            if not len(sim_indices[dataset_type]):
+                continue
+            
+            for j, sim_idx in enumerate(sim_indices[dataset_type]):
+                ax_idx += 1
+                ts_ax[-1, ax_idx].set(xlabel='Time [s]', xticks=list(range(0, tmax, 50)))
+                
+                ts_ax[ds_idx, ax_idx].plot(time, simulation_results[dataset_type][sim_idx]['true'][:, ds_idx],
+                                   label=f'True')
+                # ts_ax[ds_idx, ax_idx].plot(time, simulation_results[dataset_type][sim_idx]['pred'][:, ds_idx],
+                #                    label=f'Predicted Mean')
+                # ts_ax[ds_idx, ax_idx].plot(time, simulation_results[dataset_type][sim_idx]['modeled'][:, ds_idx],
+                #                    label=f'Base Modeled')
+                # ts_ax[ds_idx, ax_idx].scatter(time, simulation_results[dataset_type][sim_idx]['meas'][:, ds_idx], c='r',
+                #                       label=f'Measurements')
+                # ts_ax[ds_idx, ax_idx].fill_between(time, simulation_results[dataset_type][sim_idx]['pred'][:, ds_idx]
+                #                            - simulation_results[dataset_type][sim_idx]['std'][:, ds_idx],
+                #                            simulation_results[dataset_type][sim_idx]['pred'][:, ds_idx]
+                #                            + simulation_results[dataset_type][sim_idx]['std'][:, ds_idx],
+                #                            alpha=0.1, label=f'Predicted Std. Dev.')
 
-                ts_ax[ax_idx].set(
-                    title=f'Downstream Turbine Effective Wind Speeds for {dataset_type.capitalize()}ing Simulation {j} [m/s]')
+                # ts_ax[ax_idx].set(
+                #     title=f'Downstream Turbine Effective Wind Speeds for {dataset_type.capitalize()}ing Simulation {j} [m/s]')
 
-    ts_ax[0].legend(loc='center left')
-    ts_ax[-1].set(xlabel='Time [s]')
+    ts_ax[0, 0].legend(loc='center left')
+    ts_fig.show()
     return ts_fig
 
 
@@ -195,6 +209,9 @@ def plot_std_evolution(tmax, ds_indices, simulation_results, sim_indices):
 
     ax_idx = -1
     for i, dataset_type in enumerate(['train', 'test']):
+        if not len(sim_indices[dataset_type]):
+            continue
+        
         for j, sim_idx in enumerate(sim_indices[dataset_type]):
             ax_idx += 1
             for ds_idx, ds in enumerate(ds_indices):
