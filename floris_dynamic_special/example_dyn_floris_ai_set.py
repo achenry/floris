@@ -15,7 +15,7 @@
 
 import matplotlib.pyplot as plt
 
-from floridyn_special import tools as wfct # Incoming con
+from floridyn import tools as wfct # Incoming con
 
 test_ai_changes = True # Else, test yaw angle change
 # NOTE: Static floris doesn't appear to be correct for yaw angles in this case.

@@ -121,6 +121,7 @@ class DownstreamTurbineGPR:
         return delay_dk
 
     def check_history(self, measurements_df, system_fi, k_delay=GP_CONSTANTS['K_DELAY'], dt=GP_CONSTANTS['DT']):
+        
         # find the time indices in the current measurements dataframe with enough historic inputs to form an autoregressive input
         new_current_rows = measurements_df
         effective_dk = self.compute_effective_dk(system_fi, new_current_rows, k_delay=k_delay, dt=dt)
@@ -211,7 +212,8 @@ class DownstreamTurbineGPR:
         # OPTION B:
         # drop BATCH_SIZE datapoints from self.X_train at random and add BATCH_SIZE points with highest predicted variance from new available X_train_new
         assert self.X_train.shape[0] == self.max_training_size
-
+        
+        #
         keep_idx = list(range(self.X_train.shape[0]))
         np.random.shuffle(keep_idx)
         drop_idx = []
@@ -229,7 +231,8 @@ class DownstreamTurbineGPR:
         self.y_train = self.y_train[keep_idx, :]
         self.k_train = [self.k_train[i] for i in keep_idx]
         self.fit()
-
+        
+        # Replay Buffer is updated as existing replay buffer, new available datapoints and points randomly dropped from training data
         self.X_train_replay = np.vstack([self.X_train_replay, X_train_potential, dropped_X_train])
         self.y_train_replay = np.vstack([self.y_train_replay, y_train_potential, dropped_y_train])
         self.k_train_replay = self.k_train_replay + list(k_train_potential) + dropped_k_train
@@ -247,8 +250,33 @@ class DownstreamTurbineGPR:
         # order from highest to lowest predicted standard deviation
         new_std_train = [tup[2] for tup in new_dps]
         p_choice = np.exp(new_std_train) / sum(np.exp(new_std_train)) # soft-max exponential
+        # p_choice = new_std_train / np.sum(new_std_train) # soft-max exponential
+        # p_choice = new_std_train / sum(new_std_train)
+        
+        # very large number for probability of choice maps to nan
+        nan_idx, = np.where(np.isnan(p_choice))
+        if len(nan_idx):
+            p_choice = np.zeros_like(p_choice)
+            # p_choice[nan_idx] = 1 / len(nan_idx)
+            uni_prob = 1.0 / len(nan_idx)
+            for i in nan_idx:
+                p_choice[i] = uni_prob
+        
+        # if number of nonzero probabilities < n_datapoints
+        assert len(new_dps) == len(p_choice)
+        nonzero_p_choice_idx, = np.nonzero(p_choice)
+        idx_choice = np.random.choice(list(range(len(new_dps))), min(n_datapoints, len(nonzero_p_choice_idx)),
+                                      replace=False, p=p_choice)
 
-        idx_choice = np.random.choice(list(range(len(new_dps))), n_datapoints, replace=False, p=p_choice)
+        if len(idx_choice) < n_datapoints:
+            # indices of zero probability elements
+            zero_p_choice_idx = [i for i in range(len(p_choice)) if i not in nonzero_p_choice_idx]
+            
+            # select remaining data points from zero probabilities with uniform probability
+            add_idx = np.random.choice(zero_p_choice_idx, n_datapoints - len(idx_choice), replace=False)
+            # p_choice[add_idx] = min(p_choice[nonzero_p_choice_idx]) * 0.999
+            # p_choice = p_choice / sum(p_choice)
+            idx_choice = np.append(idx_choice, add_idx)
 
         # remove from replay data that has been selected
         self.X_train_replay = self.X_train_replay[~idx_choice]
@@ -266,7 +294,7 @@ class DownstreamTurbineGPR:
 
         self.add_data(new_X_train, new_y_train, new_k_train, is_online=True)
 
-        assert self.X_train.shape[0] == self.max_training_size
+        assert self.X_train.shape[0] <= self.max_training_size
 
         # truncate the replay buffer
         shuffle_idx = list(range(self.X_train_replay.shape[0]))
@@ -276,7 +304,7 @@ class DownstreamTurbineGPR:
         self.y_train_replay = self.y_train_replay[shuffle_idx, :]
         self.k_train_replay = [self.k_train_replay[i] for i in shuffle_idx]
 
-        assert self.X_train.shape[0] == self.max_training_size
+        assert self.X_train.shape[0] <= self.max_training_size
 
     def get_domain_window(self, x, window_size=0.1, n_datapoints=10):
         x_window = []

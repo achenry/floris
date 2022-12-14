@@ -22,9 +22,6 @@ from matplotlib.animation import FuncAnimation, FFMpegWriter
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel, Matern
 import sys
 
-# TODO
-# check that enable_secondary_steering, enable_yaw_added_recovery, enable_transverse_velocity are false
-
 FIGSIZE = (30, 21)
 COLOR_1 = 'darkgreen'
 COLOR_2 = 'indigo'
@@ -51,25 +48,28 @@ print('debug', DEBUG)
 print('plot_gp', PLOT_GP)
 # RUN_GP = not PLOT_GP
 
-# construct case hierarchy
-default_kernel = lambda: ConstantKernel() * RBF()
-default_kernel_idx = 0
-default_max_training_size = 100
-default_batch_size = 10
-default_noise_std = 0.01
-default_k_delay = 6
-
 if DEBUG:
+    
+    # construct case hierarchy
+    default_kernel = lambda: ConstantKernel(constant_value_bounds=(1e-12, 1e12)) * RBF(length_scale_bounds=(1e-12, 1e12))
+    default_kernel_idx = 0
+    default_max_training_size = 30
+    default_batch_size = 10
+    default_noise_std = 0.01
+    default_k_delay = 2
+    
     KERNELS = [default_kernel()]
-    MAX_TRAINING_SIZE_VALS = [default_max_training_size]
+    MAX_TRAINING_SIZE_VALS = [default_max_training_size, int(default_max_training_size / 2)]
     NOISE_STD_VALS = [default_noise_std]
     K_DELAY_VALS = [default_k_delay]
     BATCH_SIZE_VALS = [default_batch_size]
     TMAX = 300
     GP_CONSTANTS['PROPORTION_TRAINING_DATA'] = 1 #6 / 9
-    N_TOTAL_DATASETS = 3
+    N_TOTAL_DATASETS = 5
+    
 else:
-    KERNELS = [lambda: ConstantKernel() * RBF(), lambda: ConstantKernel() * Matern()]
+    KERNELS = [lambda: ConstantKernel(constant_value_bounds=(1e-12, 1e12)) * RBF(length_scale_bounds=(1e-12, 1e12)),
+               lambda: ConstantKernel(constant_value_bounds=(1e-12, 1e12)) * Matern(length_scale_bounds=(1e-12, 1e12))]
     MAX_TRAINING_SIZE_VALS = [50, 100, 200, 400]
     NOISE_STD_VALS = [0.0001, 0.001, 0.01, 0.1]
     K_DELAY_VALS = [2, 4, 6, 8]
@@ -78,6 +78,14 @@ else:
     GP_CONSTANTS['PROPORTION_TRAINING_DATA'] = 1 # 4 / 5
     N_TOTAL_DATASETS = 500
 
+    # construct case hierarchy
+    default_kernel = lambda: ConstantKernel(constant_value_bounds=(1e-12, 1e12)) * RBF(length_scale_bounds=(1e-12, 1e12))
+    default_kernel_idx = 0
+    default_max_training_size = 100
+    default_batch_size = 10
+    default_noise_std = 0.01
+    default_k_delay = 6
+    
 cases = [{'kernel': default_kernel(), 'max_training_size': default_max_training_size,
           'noise_std': default_noise_std, 'k_delay': default_k_delay, 'batch_size': x} for x in BATCH_SIZE_VALS] + \
         [{'kernel': default_kernel(), 'max_training_size': default_max_training_size, 'noise_std': default_noise_std,
@@ -89,28 +97,73 @@ cases = [{'kernel': default_kernel(), 'max_training_size': default_max_training_
         [{'kernel': x(), 'max_training_size': default_max_training_size, 'noise_std': default_noise_std,
           'k_delay': default_k_delay, 'batch_size': default_batch_size} for i, x in enumerate(KERNELS) if i != default_kernel_idx]
 
-# max_training_size = MAX_TRAINING_SIZE_VALS[0]
-# noise_std = NOISE_STD_VALS[0]
-# k_delay = K_DELAY_VALS[0]
-# batch_size = BATCH_SIZE_VALS[0]
+if not os.path.exists(os.path.join(SAVE_DIR)):
+    os.makedirs(SAVE_DIR)
 
-# if not os.path.exists(os.path.join(SAVE_DIR)):
-#     os.makedirs(SAVE_DIR)
-#
-# if not os.path.exists(os.path.join(FIG_DIR)):
-#     os.makedirs(FIG_DIR)
+if not os.path.exists(os.path.join(FIG_DIR)):
+    os.makedirs(FIG_DIR)
 
 # TODO how to define 'testing data' when GP is trained on the fly?
 
-def initialize(full_offline_measurements_df, system_fi, k_delay, noise_std, max_training_size, kernel,
+def initialize(case_idx, full_offline_measurements_df, system_fi, k_delay, noise_std, max_training_size, kernel,
                n_test_points=GP_CONSTANTS['N_TEST_POINTS']):
-    print('Initializing GPs')
+    """
+    
+    Args:
+        case_idx:
+        full_offline_measurements_df:
+        system_fi:
+        k_delay:
+        noise_std:
+        max_training_size:
+        kernel:
+        n_test_points:
+
+    Returns:
+
+    """
+    print(f'Initializing GPs for Case {case_idx}')
     gprs = init_gprs(system_fi, kernel=kernel, k_delay=k_delay, max_training_size=max_training_size)
 
     # add noise to Turbine Wind Speed measurements
     noisy_measurements_df = add_gaussian_noise(system_fi, full_offline_measurements_df, std=noise_std)
-
-    for gp in gprs:
+    
+    # simulate modeled effective wind speeds at downstream turbines for measurements
+    if GP_CONSTANTS['MODEL_TYPE'] == 'error':
+        # initialize to steady-state
+        model_fi.floris.farm.flow_field.mean_wind_speed = noisy_measurements_df.loc[0, 'FreestreamWindSpeed']
+        model_fi.reinitialize_flow_field(
+            wind_speed=noisy_measurements_df.loc[0, 'FreestreamWindSpeed'],
+            wind_direction=noisy_measurements_df.loc[0, 'FreestreamWindDir'])
+        model_fi.calculate_wake(
+            yaw_angles=[noisy_measurements_df.loc[0, f'YawAngles_{t_idx}']
+                        for t_idx in model_fi.turbine_indices],
+            axial_induction=[noisy_measurements_df.loc[0, f'AxIndFactors_{t_idx}']
+                             for t_idx in model_fi.turbine_indices])
+    
+        y_modeled = []
+        for k in noisy_measurements_df.index:
+            sim_time = noisy_measurements_df.loc[k, 'Time']
+            model_fi.floris.farm.flow_field.mean_wind_speed = noisy_measurements_df.loc[k, 'FreestreamWindSpeed']
+            model_fi.reinitialize_flow_field(
+                wind_speed=noisy_measurements_df.loc[k, 'FreestreamWindSpeed'],
+                wind_direction=noisy_measurements_df.loc[k, 'FreestreamWindDir'],
+                sim_time=sim_time)
+            model_fi.calculate_wake(
+                yaw_angles=[noisy_measurements_df.loc[k, f'YawAngles_{t_idx}']
+                            for t_idx in model_fi.turbine_indices],
+                axial_induction=[noisy_measurements_df.loc[k, f'AxIndFactors_{t_idx}']
+                                 for t_idx in model_fi.turbine_indices],
+                sim_time=sim_time)
+            y_modeled = y_modeled + [[model_fi.floris.farm.turbines[gp.turbine_index].average_velocity for gp in gprs]]
+            
+        y_modeled = np.vstack(y_modeled)
+        # noisy_measurements_df[f'TurbineWindSpeeds_{gp.turbine_index}'].to_numpy()
+    else:
+        y_modeled = np.zeros(len(noisy_measurements_df.index), len(gprs))
+    
+    # for each downstream wind turbine
+    for gp_idx, gp in enumerate(gprs):
 
         k_to_add, effective_dk, reduced_effective_dk, history_exists = \
             gp.check_history(noisy_measurements_df, system_fi, k_delay=k_delay, dt=GP_CONSTANTS['DT'])
@@ -126,48 +179,11 @@ def initialize(full_offline_measurements_df, system_fi, k_delay, noise_std, max_
         shuffle_idx = shuffle_idx[:max_training_size]
 
         # compute the base model values for the wake, given all of the freestream wind speeds, yaw angles and axial induction factors over time for each time-series dataset
-        
-        if GP_CONSTANTS['MODEL_TYPE'] == 'error':
-            # initialize to steady-state
-            model_fi.floris.farm.flow_field.mean_wind_speed = noisy_measurements_df.loc[0, 'FreestreamWindSpeed']
-            model_fi.reinitialize_flow_field(
-                wind_speed=noisy_measurements_df.loc[0, 'FreestreamWindSpeed'],
-                wind_direction=noisy_measurements_df.loc[0, 'FreestreamWindDir'])
-            model_fi.calculate_wake(
-                yaw_angles=[noisy_measurements_df.loc[0, f'YawAngles_{t_idx}']
-                            for t_idx in model_fi.turbine_indices],
-                axial_induction=[noisy_measurements_df.loc[0, f'AxIndFactors_{t_idx}']
-                                 for t_idx in model_fi.turbine_indices])
-            
-
-            y_modeled = []
-            for k in noisy_measurements_df.index:
-                sim_time = noisy_measurements_df.loc[k, 'Time']
-                model_fi.floris.farm.flow_field.mean_wind_speed = noisy_measurements_df.loc[
-                    k, 'FreestreamWindSpeed']
-                model_fi.reinitialize_flow_field(
-                    wind_speed=noisy_measurements_df.loc[k, 'FreestreamWindSpeed'],
-                    wind_direction=noisy_measurements_df.loc[k, 'FreestreamWindDir'],
-                    sim_time=sim_time)
-                model_fi.calculate_wake(
-                    yaw_angles=[noisy_measurements_df.loc[k, f'YawAngles_{t_idx}']
-                                for t_idx in model_fi.turbine_indices],
-                    axial_induction=[noisy_measurements_df.loc[k, f'AxIndFactors_{t_idx}']
-                                     for t_idx in model_fi.turbine_indices],
-                    sim_time=sim_time)
-                y_modeled.append(model_fi.floris.farm.turbines[gp.turbine_index].average_velocity)
-            y_modeled = np.array(y_modeled)
-            noisy_measurements_df[f'TurbineWindSpeeds_{gp.turbine_index}'].to_numpy()
-        else:
-            y_modeled = np.zeros(len(noisy_measurements_df.index))
-        
         X_train_new, y_train_new = gp.prepare_data(noisy_measurements_df, k_to_add.loc[shuffle_idx],
                                                    reduced_effective_dk.loc[shuffle_idx],
-                                                   y_modeled=y_modeled[shuffle_idx],
+                                                   y_modeled=y_modeled[shuffle_idx, gp_idx],
                                                    k_delay=k_delay)
         
-
-
         X_test_indices = np.random.randint([N_TEST_POINTS_PER_COORD for l in gp.input_labels],
                                            size=(n_test_points, len(gp.input_labels)))
 
@@ -193,7 +209,9 @@ def initialize(full_offline_measurements_df, system_fi, k_delay, noise_std, max_
 
 def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                           current_input_labels, k_delay, noise_std, batch_size, dataset_type):
-
+    
+    print(f'Running Simulation {simulation_idx} for Case {case_idx}')
+    
     # Fetch wind farm system layout information, floris interface used to simulate 'true' wind farm
     system_fi = get_system_info()
 
@@ -345,7 +363,8 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                         print(f'Not enough history available to fit {gp_idx} th GP with batch of samples, adding to buffer instead')
                         continue
 
-                    print(f'Enough history available to fit {gp_idx} th GP with {len(unadded_k_idx)} th samples')
+                    print(f'Enough history available to fit {gp_idx} th GP with {len(unadded_k_idx)} new samples '
+                          f'between k = {k_to_add.loc[unadded_k_idx].values[0]} and {k_to_add.loc[unadded_k_idx].values[-1]}')
                     
                     potential_X_train_new, potential_y_train_new \
                         = gprs[gp_idx].prepare_data(online_measurements_df,
@@ -433,8 +452,10 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
     # gp_idx = 0
     # ani = FuncAnimation(training_fig, animate, frames=len(y_train_frames), interval=25, fargs=[gp_idx])
     # ani.save(os.path.join(FIG_DIR, f'training_ani_case-{case_idx}_df-{simulation_idx}_gp.mp4'))
-
-    pd.DataFrame(results).to_csv(os.path.join(SAVE_DIR, f'simulation_data_{dataset_type}_case-{case_idx}_df-{simulation_idx}.csv'))
+    
+    filename = f'simulation_data_{dataset_type}_case-{case_idx}_df-{simulation_idx}'
+    with open(os.path.join(SAVE_DIR, filename), 'wb') as fp:
+        pickle.dump(results, fp)
         
     return results
 
@@ -550,8 +571,8 @@ if __name__ == '__main__':
             #                plot_data_bool=GP_CONSTANTS['PLOT_DATA'])
 
             case_gprs = []
-            for case in cases:
-                case_gprs.append(initialize(full_offline_measurements_df, system_fi,
+            for case_idx, case in enumerate(cases):
+                case_gprs.append(initialize(case_idx, full_offline_measurements_df, system_fi,
                            case['k_delay'], case['noise_std'], case['max_training_size'], case['kernel']))
         else:
             pool = Pool(mp.cpu_count())
@@ -564,9 +585,9 @@ if __name__ == '__main__':
             
             pool = Pool(mp.cpu_count())
             case_gprs = pool.starmap(initialize,
-                         [(full_offline_measurements_df, system_fi,
+                         [(case_idx, full_offline_measurements_df, system_fi,
                            case['k_delay'], case['noise_std'], case['max_training_size'], case['kernel'])
-                          for case in cases])
+                          for case_idx, case in enumerate(cases)])
             pool.close()
 
         # start simulation
@@ -580,37 +601,39 @@ if __name__ == '__main__':
                                + [f'TurbineWindSpeeds_{t}' for t in system_fi.turbine_indices] \
                                + [f'AxIndFactors_{t}' for t in system_fi.turbine_indices] \
                                + [f'YawAngles_{t}' for t in system_fi.turbine_indices]
-
-        for case_idx, case in enumerate(cases):
-            # Run simulations
-
-            if DEBUG:
-                simulations_train = []
+        
+        if DEBUG:
+            simulations_train = []
+            simulations_test = []
+            for case_idx, case in enumerate(cases):
                 for df_idx, df in enumerate(wake_field_dfs['train']):
                     simulations_train.append(run_single_simulation(case_idx, case_gprs[case_idx], df, df_idx,
                                                    current_input_labels,
                                                    case['k_delay'], case['noise_std'], case['batch_size'], 'train'))
                 
-                simulations_test = []
                 for df_idx, df in enumerate(wake_field_dfs['test']):
                     simulations_test.append(run_single_simulation(case_idx, case_gprs[case_idx], df, df_idx + len(wake_field_dfs['train']),
                                                    current_input_labels,
                                                    case['k_delay'], case['noise_std'], case['batch_size'], 'test'))
 
-            else:
-                pool = Pool(mp.cpu_count())
-                simulations_train = pool.starmap(run_single_simulation,
-                                                 [(case_idx, case_gprs[case_idx], df, df_idx,
-                                                   current_input_labels,
-                                                   case['k_delay'], case['noise_std'], case['batch_size'], 'train')
-                                                  for df_idx, df in enumerate(wake_field_dfs['train'])])
-                # TODO many nan values?
-                simulations_test = pool.starmap(run_single_simulation,
-                                                 [(case_idx, case_gprs[case_idx], df, df_idx + len(wake_field_dfs['train']),
-                                                   current_input_labels,
-                                                   case['k_delay'], case['noise_std'], case['batch_size'], 'test')
-                                                  for df_idx, df in enumerate(wake_field_dfs['test'])])
-                pool.close()
+        else:
+            simulation_train_cases =  np.concatenate([[(case_idx, case_gprs[case_idx], df, df_idx,
+                                               current_input_labels,
+                                               case['k_delay'], case['noise_std'], case['batch_size'], 'train')
+                                              for df_idx, df in enumerate(wake_field_dfs['train'])] for case_idx, case in enumerate(cases)])
+            
+            pool = Pool(mp.cpu_count())
+            simulations_train = pool.starmap(run_single_simulation, simulation_train_cases)
+            
+            
+            simulation_test_cases = np.concatenate([[(case_idx, case_gprs[case_idx], df, df_idx,
+                                                       current_input_labels,
+                                                       case['k_delay'], case['noise_std'], case['batch_size'],
+                                                       'test')
+                                                      for df_idx, df in enumerate(wake_field_dfs['test'])] for
+                                                     case_idx, case in enumerate(cases)])
+            simulations_test = pool.starmap(run_single_simulation, simulation_test_cases)
+            pool.close()
 
     if PLOT_GP:
         system_fi = get_system_info()
@@ -619,18 +642,18 @@ if __name__ == '__main__':
         for root, dir, filenames in os.walk(SAVE_DIR):
             for filename in sorted(filenames):
                 if 'simulation_data' in filename:
-                    if '.csv' in filename:
-                        if 'train' in filename:
-                            simulation_results['train'].append(pd.read_csv(os.path.join(SAVE_DIR, filename)))
-                        elif 'test' in filename:
-                            simulation_results['test'].append(pd.read_csv(os.path.join(SAVE_DIR, filename)))
-                    else:
-                        if 'train' in filename:
-                            with open(os.path.join(SAVE_DIR, filename), 'rb') as fp:
-                                simulation_results['train'].append(pickle.load(fp))
-                        elif 'test' in filename:
-                            with open(os.path.join(SAVE_DIR, filename), 'rb') as fp:
-                                simulation_results['test'].append(pickle.load(fp))
+                    # if '.csv' in filename:
+                    #     if 'train' in filename:
+                    #         simulation_results['train'].append(pd.read_csv(os.path.join(SAVE_DIR, filename)))
+                    #     elif 'test' in filename:
+                    #         simulation_results['test'].append(pd.read_csv(os.path.join(SAVE_DIR, filename)))
+                    # else:
+                    if 'train' in filename:
+                        with open(os.path.join(SAVE_DIR, filename), 'rb') as fp:
+                            simulation_results['train'].append(pickle.load(fp))
+                    elif 'test' in filename:
+                        with open(os.path.join(SAVE_DIR, filename), 'rb') as fp:
+                            simulation_results['test'].append(pickle.load(fp))
 
         ## PLOT RESULTS
         # plot the true vs predicted gp values over the course of the simulation
