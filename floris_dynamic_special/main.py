@@ -97,6 +97,11 @@ cases = [{'kernel': default_kernel(), 'max_training_size': default_max_training_
         [{'kernel': x(), 'max_training_size': default_max_training_size, 'noise_std': default_noise_std,
           'k_delay': default_k_delay, 'batch_size': default_batch_size} for i, x in enumerate(KERNELS) if i != default_kernel_idx]
 
+CASE_IDS = list(range(len(cases))) if len(sys.argv) < 2 else [int(i) for i in sys.argv[2].split(',')]
+cases = [cases[c] for c in range(len(cases)) if c in CASE_IDS]
+
+# wake_field_dfs['train']
+
 if not os.path.exists(os.path.join(SAVE_DIR)):
     os.makedirs(SAVE_DIR)
 
