@@ -56,35 +56,47 @@ WS_TI = 0
 WD_TI = 0
 DEBUG = len(sys.argv) > 1 and sys.argv[1] == 'debug'
 print('debug', DEBUG)
-N_CASES = 9 if DEBUG else 5000
+N_CASES = 9 if DEBUG else 500
 
-TOTAL_TIME = 300 if DEBUG else 600
+TOTAL_TIME = 1200
 
-# hold constant over simulation time span
+# hold mean freestream wind speed and wind direction constant over simulation time span
 FREESTREAM_WIND_SPEEDS = [step_change([val], TOTAL_TIME, DT) for val in ([8, 10, 12] if DEBUG else [8, 10, 12])]
 FREESTREAM_WIND_DIRS = [step_change([val], TOTAL_TIME, DT) for val in ([250, 260, 270] if DEBUG else [250, 260, 270])]
 
-# change over course of single simulation to learn how wake fields propagate over time
+# vary yaw angles and axial induction factors of upstream turbines over course of each simulation
+# YAW_ANGLES = [step_change([0.0, 7.5, 15], TOTAL_TIME, DT)] if DEBUG else \
+#     [
+#     step_change([-20, -15, -10], TOTAL_TIME, DT),
+#     step_change([-10, -15, -20], TOTAL_TIME, DT),
+#     step_change([20, 15, 10], TOTAL_TIME, DT),
+#     step_change([10, 15, 20], TOTAL_TIME, DT),
+#      step_change([-10, 0, 10], TOTAL_TIME, DT),
+#      step_change([10, 0, -10], TOTAL_TIME, DT),
+#      step_change([10], TOTAL_TIME, DT),
+#      step_change([-10], TOTAL_TIME, DT),
+#      step_change([0], TOTAL_TIME, DT)
+#     ]
 YAW_ANGLES = [step_change([0.0, 7.5, 15], TOTAL_TIME, DT)] if DEBUG else \
     [
-    step_change([-20, -15, -10], TOTAL_TIME, DT),
-    step_change([-10, -15, -20], TOTAL_TIME, DT),
-    step_change([20, 15, 10], TOTAL_TIME, DT),
-    step_change([10, 15, 20], TOTAL_TIME, DT),
-     step_change([-10, 0, 10], TOTAL_TIME, DT),
-     step_change([10, 0, -10], TOTAL_TIME, DT),
-     step_change([10], TOTAL_TIME, DT),
-     step_change([-10], TOTAL_TIME, DT),
-     step_change([0], TOTAL_TIME, DT)
+        step_change([5, 10, 15, 20], TOTAL_TIME, DT),
+        step_change([-10, -5, 5, 10], TOTAL_TIME, DT),
+        step_change([-5, -10, -15, -20], TOTAL_TIME, DT)
     ]
+# AX_IND_FACTORS = [step_change([0.11, 0.22, 0.22, 0.33], TOTAL_TIME, DT)] if DEBUG else \
+#     [
+#      step_change([0.11, 0.22, 0.22, 0.33], TOTAL_TIME, DT),
+#      step_change([0.33, 0.33, 0.22, 0.11], TOTAL_TIME, DT),
+#      step_change([0.22, 0.22, 0.33, 0.11], TOTAL_TIME, DT),
+#      step_change([0.11], TOTAL_TIME, DT),
+#      step_change([0.33], TOTAL_TIME, DT),
+#      step_change([0.22], TOTAL_TIME, DT)
+#     ]
 AX_IND_FACTORS = [step_change([0.11, 0.22, 0.22, 0.33], TOTAL_TIME, DT)] if DEBUG else \
     [
-     step_change([0.11, 0.22, 0.22, 0.33], TOTAL_TIME, DT),
-     step_change([0.33, 0.33, 0.22, 0.11], TOTAL_TIME, DT),
-     step_change([0.22, 0.22, 0.33, 0.11], TOTAL_TIME, DT),
-     step_change([0.11], TOTAL_TIME, DT),
-     step_change([0.33], TOTAL_TIME, DT),
-     step_change([0.22], TOTAL_TIME, DT)
+     step_change([0.11, 0.22, 0.33, 0.22], TOTAL_TIME, DT),
+     step_change([0.33, 0.22, 0.33, 0.22], TOTAL_TIME, DT),
+     step_change([0.22, 0.33, 0.22, 0.11], TOTAL_TIME, DT)
     ]
 
 # **************************************** Initialization **************************************** #
@@ -116,7 +128,6 @@ n_turbines = len(fi.floris.farm.turbines)
 #         os.makedirs(dir)
 
 # **************************************** GENERATE TIME-VARYING FREESTREAM WIND SPEED/DIRECTION, YAW ANGLE, TURBINE TOPOLOGY SWEEP **************************************** #
-# TODO - alt generate DLCs using turbsim
 
 case_inputs = {}
 case_inputs['mean_wind_speed'] = {'group': 0, 'vals': FREESTREAM_WIND_SPEEDS}
@@ -141,6 +152,7 @@ case_list, case_name_list = CaseGen_General(case_inputs, dir_matrix='.', namebas
 case_list = np.repeat(case_list, N_SEEDS)
 case_name_list = np.concatenate([[name] * N_SEEDS for name in case_name_list])
 n_cases = len(case_name_list)
+print(f'Simulating {n_cases} total wake field cases...')
 
 # **************************************** Simulation **************************************** #
 
@@ -207,7 +219,7 @@ def sim_func(case_idx, case):
         # calculate dynamic wake computationally
         fi.calculate_wake(yaw_angles=yaw_angles[tt], axial_induction=ai_factors[tt], sim_time=sim_time)
         
-        if case_idx == 0:
+        if case_idx == 0 and False:
             horizontal_planes.append(fi.get_hor_plane(x_resolution=200, y_resolution=100, height=90.0)) # horizontal plane at hub-height
             y_planes.append(fi.get_y_plane(x_resolution=200, z_resolution=100, y_loc=0.0)) # vertical plane parallel to freestream wind direction
             cross_planes.append(fi.get_cross_plane(y_resolution=100, z_resolution=100, x_loc=630.0)) # vertical plane parallel to turbine disc plane  
