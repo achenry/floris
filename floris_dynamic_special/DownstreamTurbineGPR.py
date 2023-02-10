@@ -137,7 +137,7 @@ class DownstreamTurbineGPR:
         return X, y, k_to_add.iloc[unq_idx]
 
     def add_data(self, new_X_train, new_y_train, new_k_train, is_online):
-
+        
         self.X_train = np.vstack([self.X_train, new_X_train])[-self.max_training_size if self.max_training_size > -1
                                                               else 0:, :]
         self.y_train = np.vstack([self.y_train, new_y_train])[-self.max_training_size if self.max_training_size > -1
@@ -146,6 +146,7 @@ class DownstreamTurbineGPR:
         if is_online:
             self.k_train = (self.k_train + list(new_k_train))[-self.max_training_size if self.max_training_size > -1
                                                               else 0:]
+            assert len(set(self.k_train_replay).intersection(self.k_train)) == 0
         else:
             self.k_train = [-1] * self.X_train.shape[0]
 
@@ -201,6 +202,7 @@ class DownstreamTurbineGPR:
         # assert self.X_train.shape[0] <= self.max_training_size
         
         # drop BATCH_SIZE datapoints from training dataset at random
+        
         init_n_train = int(self.X_train.shape[0])
         keep_idx = list(range(self.X_train.shape[0]))
         np.random.shuffle(keep_idx)
@@ -227,28 +229,24 @@ class DownstreamTurbineGPR:
             self.X_train_replay = np.vstack([self.X_train_replay, X])
             self.y_train_replay = np.vstack([self.y_train_replay, y])
             self.k_train_replay = self.k_train_replay + [k]
-            
-        
-        # self.X_train_replay = np.vstack([self.X_train_replay, X_train_potential, dropped_X_train])
-        # self.y_train_replay = np.vstack([self.y_train_replay, y_train_potential, dropped_y_train])
-        # self.k_train_replay = self.k_train_replay + list(k_train_potential) + dropped_k_train
-        
+
         # retrain gp with reduced training dataset
         self.X_train = self.X_train[keep_idx, :]
         self.y_train = self.y_train[keep_idx, :]
-        self.k_train = [self.k_train[i] for i in keep_idx] # TODO why does this only contain one element, 220
+        self.k_train = [self.k_train[i] for i in keep_idx]
+
         if len(keep_idx):
             self.fit()
         
         # predict variance for each candidate datapoint in replay buffer
         new_dps = []
+        assert len(np.unique(self.k_train_replay)) == len(self.k_train_replay)
+        assert len(set(self.k_train_replay).intersection(self.k_train)) == 0
         for i, k in enumerate(self.k_train_replay):
             X = self.X_train_replay[i, :]
             y = self.y_train_replay[i]
             _, std = self.gpr.predict([X], return_std=True)
             new_dps.append((X, y, std[0], k))
-
-        # assert len(new_dps) >= n_datapoints
 
         # assign probability of data point being selected to exponential of standard deviation => points with higher standard deviation prediction will be favoured
         new_std_train = [tup[2] for tup in new_dps]
@@ -277,32 +275,41 @@ class DownstreamTurbineGPR:
             idx_choice = np.append(idx_choice, add_idx)
 
         # remove from replay buffer data that has been added to training dataset
-        if self.X_train_replay.shape[0] > len(idx_choice):
-            self.X_train_replay = np.vstack([self.X_train_replay[i, :] for i in range(self.X_train_replay.shape[0]) if i not in idx_choice])
-            self.y_train_replay =  np.vstack([self.y_train_replay[i, :] for i in range(self.y_train_replay.shape[0]) if i not in idx_choice])
-            self.k_train_replay = [k for i, k in enumerate(self.k_train_replay) if i not in idx_choice]
-
+        # if self.X_train_replay.shape[0] > len(idx_choice):
+        # self.X_train_replay = np.vstack([self.X_train_replay[i, :] for i in range(self.X_train_replay.shape[0]) if i not in idx_choice])
+        # self.y_train_replay =  np.vstack([self.y_train_replay[i, :] for i in range(self.y_train_replay.shape[0]) if i not in idx_choice])
+        # self.k_train_replay = [k for i, k in enumerate(self.k_train_replay) if i not in idx_choice]
+        idx_left = [idx for idx in range(len(self.k_train_replay)) if idx not in idx_choice]
+        self.X_train_replay = self.X_train_replay[idx_left, :]
+        self.y_train_replay = self.y_train_replay[idx_left, :]
+        self.k_train_replay = [self.k_train_replay[idx] for idx in idx_left]
+            
         # add to training data
         # new_Xy_train = sorted(new_dps, key=lambda tup: tup[2], reverse=True)[:n_datapoints]
         new_Xy_train = [new_dps[i] for i in idx_choice]
         new_X_train = np.vstack([tup[0] for tup in new_Xy_train])
         new_y_train = np.vstack([tup[1] for tup in new_Xy_train])
         new_k_train = [tup[3] for tup in new_Xy_train]
+        assert len(np.unique(new_k_train)) == len(new_k_train)
 
         assert new_X_train.shape[0] == min(n_datapoints + len(drop_idx), len(new_dps))
 
         self.add_data(new_X_train, new_y_train, new_k_train, is_online=True)
 
-        assert (self.X_train.shape[0] == self.max_training_size) or (self.X_train.shape[0] == min(n_datapoints + init_n_train, len(idx_choice) + init_n_train - len(drop_idx)))
+        assert (self.X_train.shape[0] == self.max_training_size) \
+               or (self.X_train.shape[0] == min(n_datapoints + init_n_train, len(idx_choice) + init_n_train - len(drop_idx)))
         assert self.k_train.__len__() == self.X_train.shape[0]
-
+        assert len(np.unique(self.k_train)) == len(self.k_train)
+        assert len(set(self.k_train_replay).intersection(self.k_train)) == 0
+        
         # truncate the replay buffer randomly
-        shuffle_idx = list(range(self.X_train_replay.shape[0]))
+        shuffle_idx = list(range(len(self.k_train_replay)))
         np.random.shuffle(shuffle_idx)
         shuffle_idx = shuffle_idx[:self.max_replay_size]
         self.X_train_replay = self.X_train_replay[shuffle_idx, :]
         self.y_train_replay = self.y_train_replay[shuffle_idx, :]
         self.k_train_replay = [self.k_train_replay[i] for i in shuffle_idx]
+        assert len(set(self.k_train_replay).intersection(self.k_train)) == 0
 
 def optimizer(fun, initial_theta, bounds):
     res = minimize(fun, initial_theta, 

@@ -92,7 +92,7 @@ def plot_measurements_vs_time(axs, time, X, y, input_labels, input_types, delay_
         
     axs[0, 0].legend()
     for col_idx in range(len(input_types)):
-        axs[-1, col_idx].set(xlabel='Time [s]', xticks=time[start_indices[0]::100])
+        axs[-1, col_idx].set(xlabel='Time [s]', xticks=time[start_indices[0]::300])
     
     plt.subplots_adjust(wspace=0.6, hspace=0.4)
 
@@ -195,7 +195,7 @@ def plot_score(system_fi, turbine_score, turbine_score_mean, turbine_score_std, 
     return score_fig
 
 
-def plot_ts(ds_indices, simulation_results, sim_indices, time):
+def plot_ts(all_ds_indices, ds_indices, simulation_results, sim_indices, time):
     """
    GP estimate, true value, noisy measurements of
     effective wind speeds of downstream turbines vs.
@@ -211,50 +211,56 @@ def plot_ts(ds_indices, simulation_results, sim_indices, time):
     dataset_type = 'train'
     min_val = np.infty
     max_val = -np.infty
-    for ds_idx, ds in enumerate(ds_indices):
+    for row_idx, ds in enumerate(ds_indices):
         ax_idx = -1
         if not len(sim_indices[dataset_type]):
             continue
         
         for j, sim_idx in enumerate(sim_indices[dataset_type]):
             ax_idx += 1
-            ts_ax[-1, ax_idx].set(xlabel='Time [s]', xticks=list(range(0, time[-1] + 50, 50)))
+            ts_ax[-1, ax_idx].set(xlabel='Time [s]', xticks=list(range(0, time[-1] + 300, 300)))
             ts_ax[ax_idx, 0].set(ylabel='[m/s]')
             
-            ts_ax[ds_idx, ax_idx].plot(time, simulation_results[dataset_type][sim_idx]['true'][:, ds_idx],
-                               color='orange', label=f'True')
-            ts_ax[ds_idx, ax_idx].plot(time, simulation_results[dataset_type][sim_idx]['pred'][:, ds_idx],
+            sim_data = simulation_results[dataset_type][sim_idx]
+            
+            # if sim_idx == 1 and row_idx == 1:
+            #     print("stop!")
+            
+            ds_idx = all_ds_indices.index(ds)
+            # ts_ax[ds_idx, ax_idx].scatter(time, simulation_results[dataset_type][sim_idx]['true'][:, ds_idx],
+            #                    color='orange', label=f'True', marker="o")
+            ts_ax[row_idx, ax_idx].plot(time, sim_data['pred'][:, ds_idx],
                                color='green', label=f'Predicted Mean')
-            ts_ax[ds_idx, ax_idx].plot(time, simulation_results[dataset_type][sim_idx]['modeled'][:, ds_idx],
-                               color='purple', label=f'Base Modeled')
-            ts_ax[ds_idx, ax_idx].scatter(time, simulation_results[dataset_type][sim_idx]['meas'][:, ds_idx],
+            # ts_ax[ds_idx, ax_idx].plot(time, simulation_results[dataset_type][sim_idx]['modeled'][:, ds_idx],
+            #                    color='purple', label=f'Base Modeled')
+            ts_ax[row_idx, ax_idx].scatter(time, sim_data['meas'][:, ds_idx],
                                           color='red',
-                                  label=f'Measurements')
-            ts_ax[ds_idx, ax_idx].fill_between(time, simulation_results[dataset_type][sim_idx]['pred'][:, ds_idx]
-                                       - simulation_results[dataset_type][sim_idx]['std'][:, ds_idx],
-                                       simulation_results[dataset_type][sim_idx]['pred'][:, ds_idx]
-                                       + simulation_results[dataset_type][sim_idx]['std'][:, ds_idx],
+                                  label=f'Measurements', marker="^")
+            ts_ax[row_idx, ax_idx].fill_between(time,
+                                               sim_data['pred'][:, ds_idx] - sim_data['std'][:, ds_idx],
+                                       sim_data['pred'][:, ds_idx] + sim_data['std'][:, ds_idx],
                                        alpha=0.1, label=f'Predicted Std. Dev.', color='lightgreen')
 
-            min_val = min(min_val, np.nanmin([ln.get_ydata() for ln in ts_ax[ds_idx, ax_idx].get_lines()]))
-            max_val = max(max_val, np.nanmax([ln.get_ydata() for ln in ts_ax[ds_idx, ax_idx].get_lines()]))
+            min_val = min(min_val, np.nanmin([ln.get_ydata() for ln in ts_ax[row_idx, ax_idx].get_lines()]))
+            max_val = max(max_val, np.nanmax([ln.get_ydata() for ln in ts_ax[row_idx, ax_idx].get_lines()]))
 
-    for ds_idx, ds in enumerate(ds_indices):
+    for row_idx, ds in enumerate(ds_indices):
         ax_idx = -1
+        ds_idx = all_ds_indices.index(ds)
         for j, sim_idx in enumerate(sim_indices[dataset_type]):
             ax_idx += 1
-            training_start_idx = np.where(~np.isnan(simulation_results[dataset_type][sim_idx]['pred'][:, ds_idx]))[0][0]
-            ts_ax[ds_idx, ax_idx].plot([training_start_idx, training_start_idx], [min_val, max_val], linestyle='--',
+            training_start_idx = np.where(~np.isnan(sim_data['pred'][:, ds_idx]))[0][0]
+            ts_ax[row_idx, ax_idx].plot([training_start_idx, training_start_idx], [min_val, max_val], linestyle='--',
                                        color='#1f77b4')
 
             # ts_ax[ax_idx].set(
             #     title=f'Downstream Turbine Effective Wind Speeds for {dataset_type.capitalize()}ing Simulation {j} [m/s]')
 
-    # ts_ax[0, 0].legend(loc='center left')
+    ts_ax[-1, -1].legend(loc='upper right')
     return ts_fig
 
 
-def plot_std_evolution(ds_indices, simulation_results, sim_indices, time):
+def plot_std_evolution(all_ds_indices, ds_indices, simulation_results, sim_indices, time):
     """
     plot evolution of sum of predicted variance at grid test points for middle column downstream turbines vs online training time
     Returns:
@@ -270,32 +276,34 @@ def plot_std_evolution(ds_indices, simulation_results, sim_indices, time):
     ax_idx = -1
     for j, sim_idx in enumerate(sim_indices[dataset_type]):
         ax_idx += 1
-        for ds_idx, ds in enumerate(ds_indices):
-            std_ax[ax_idx, ds_idx].plot(time, simulation_results[dataset_type][sim_idx]['test_std'][:, ds_idx],
-                                        color='lightgreen')
+        for col_idx, ds in enumerate(ds_indices):
+            ds_idx = all_ds_indices.index(ds)
+            std_ax[ax_idx, col_idx].plot(time, simulation_results[dataset_type][sim_idx]['test_std'][:, ds_idx],
+                                        color='green')
 
             # std_ax[ax_idx].set(
             #     title=f'Downstream Turbine Effective Wind Speed Standard Deviation '
             #           f'vs. Time for {dataset_type.capitalize()}ing Simulation {j} [m/s]')
             
-            std_ax[0, ds_idx].set(title=f'Turbine {ds}', ylabel='[m/s]')
-            std_ax[-1, ds_idx].set(xlabel='Time [s]')
-            min_val = min(min_val, np.nanmin([ln.get_ydata() for ln in std_ax[ax_idx, ds_idx].get_lines()]))
-            max_val = max(max_val, np.nanmax([ln.get_ydata() for ln in std_ax[ax_idx, ds_idx].get_lines()]))
-            std_ax[ax_idx, ds_idx].set(xticks=np.arange(time[0], time[-1] + 50, 50))
+            std_ax[0, col_idx].set(title=f'Turbine {ds}', ylabel='[m/s]')
+            std_ax[-1, col_idx].set(xlabel='Time [s]')
+            min_val = min(min_val, np.nanmin([ln.get_ydata() for ln in std_ax[ax_idx, col_idx].get_lines()]))
+            max_val = max(max_val, np.nanmax([ln.get_ydata() for ln in std_ax[ax_idx, col_idx].get_lines()]))
+            std_ax[ax_idx, col_idx].set(xticks=np.arange(time[0], time[-1] + 300, 300))
 
     ax_idx = -1
     for j, sim_idx in enumerate(sim_indices[dataset_type]):
         ax_idx += 1
-        for ds_idx, ds in enumerate(ds_indices):
+        for col_idx, ds in enumerate(ds_indices):
+            ds_idx = all_ds_indices.index(ds)
             training_start_idx = np.where(~np.isnan(simulation_results[dataset_type][sim_idx]['test_std'][:, ds_idx]))[0][0]
-            std_ax[ax_idx, ds_idx].plot([training_start_idx, training_start_idx], [min_val, max_val], linestyle='--',
+            std_ax[ax_idx, col_idx].plot([training_start_idx, training_start_idx], [min_val, max_val], linestyle='--',
                                         color='#1f77b4')
             
     return std_fig
 
 
-def plot_k_train_evolution(ds_indices, simulation_results, sim_indices, time):
+def plot_k_train_evolution(all_ds_indices, ds_indices, simulation_results, sim_indices, time):
     """
     plot evolution of sum of predicted variance at grid test points for middle column downstream turbines vs online training time
     Returns:
@@ -310,8 +318,11 @@ def plot_k_train_evolution(ds_indices, simulation_results, sim_indices, time):
     dataset_type = 'train'
     
     for j, sim_idx in enumerate(sim_indices[dataset_type]):
-        for ds_idx, ds in enumerate(ds_indices):
+        for ds in ds_indices:
             ax_idx += 1
+            ds_idx = all_ds_indices.index(ds)
+            [k_train[ds_idx] if len(k_train) else [] for k_train in simulation_results[dataset_type][sim_idx]['k_train']]
+            
             k_train_ax[ax_idx].scatter(time, simulation_results[dataset_type][sim_idx]['k_train'][:, ds_idx],
                                 label=f'Turbine {ds}')
             

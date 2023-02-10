@@ -248,7 +248,7 @@
               "use_yaw_added_recovery": true
             },
             "jensen": {
-              "we": 0.05
+              "we": 0.034
             }
         },
         "wake_deflection_parameters": {

@@ -38,13 +38,13 @@ if sys.platform == 'darwin':
     SCALARS_DIR = './scalars'
 elif sys.platform == 'linux':
     FARM_LAYOUT = '9turb'
-    SIM_SAVE_DIR = f'/scratch/summit/aohe7145/wake_gp/{FARM_LAYOUT}_wake_field_simulations'
-    TS_SAVE_DIR = f'/scratch/summit/aohe7145/wake_gp/{FARM_LAYOUT}_wake_field_ts_data'
+    SIM_SAVE_DIR = f'/scratch/alpine/aohe7145/wake_gp/{FARM_LAYOUT}_wake_field_simulations'
+    TS_SAVE_DIR = f'/scratch/alpine/aohe7145/wake_gp/{FARM_LAYOUT}_wake_field_ts_data'
     FLORIS_DIR = f'./{FARM_LAYOUT}_floris_input.json'
     BASE_MODEL_FLORIS_DIR = f'./{FARM_LAYOUT}_base_model_floris_input.json'
-    DATA_DIR = f'/scratch/summit/aohe7145/wake_gp/data'
-    FIG_DIR = f'/scratch/summit/aohe7145/wake_gp/figs'
-    SCALARS_DIR = '/scratch/summit/aohe7145/wake_gp//scalars'
+    DATA_DIR = f'/scratch/alpine/aohe7145/wake_gp/data'
+    FIG_DIR = f'/scratch/alpine/aohe7145/wake_gp/figs'
+    SCALARS_DIR = '/scratch/alpine/aohe7145/wake_gp//scalars'
 
 FIGSIZE = (30, 21)
 COLOR_1 = 'darkgreen'
@@ -274,7 +274,7 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
     y_std = [[] for i in range(kmax_gp)]
     y_meas = [[] for i in range(kmax_gp)]
     y_train_frames = []
-    k_train_frames = []
+    k_train_frames = [[] for i in range(kmax_gp)]
     test_std = np.nan * np.ones((kmax_gp, len(gprs)))
     # test_rmse = np.nan * np.ones((kmax_gp, len(gprs)))
 
@@ -369,7 +369,7 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                 min_k_needed = set()
                 
                 y_train_frames.append([])
-                k_train_frames.append([])
+                
 
                 # for each downstream turbine
                 for gp_idx, ds_turbine_idx in enumerate(system_fi.downstream_turbine_indices):
@@ -424,7 +424,9 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                     gprs[gp_idx].choose_new_data(potential_X_train_new, potential_y_train_new, potential_k_train_new,
                                                  n_datapoints=batch_size)
                     
-                    k_train_frames[-1].append(gprs[gp_idx].k_train)
+                    # TODO why are there duplicates for a given gp at a given time-step
+                    # add this GPs data points identifiers for this time-step
+                    k_train_frames[k_gp].append(gprs[gp_idx].k_train)
                     
                     # refit gp
                     if FIT_ONLINE:
@@ -452,10 +454,6 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                 y_meas_k = current_measurements[f'TurbineWindSpeeds_{ds_idx}']
                 y_meas[k_gp].append(y_meas_k[0])
 
-    # TODO why is all y_pred nan
-    if np.all(np.isnan(y_pred)):
-        print('oh no')
-    
     y_true = np.vstack(y_true)
     y_modeled = np.vstack(y_modeled)
     y_pred = np.vstack(y_pred)
@@ -639,15 +637,17 @@ if __name__ == '__main__':
         n_ts_plots = 2
         sim_indices = {'train': np.argsort(sim_score['train'])[:n_ts_plots]}
 
-        ts_fig = plot_ts(ds_indices, simulation_results, sim_indices, np.arange(0, TMAX, GP_DT))
+        ts_fig = plot_ts(system_fi.downstream_turbine_indices, ds_indices, simulation_results, sim_indices, np.arange(0, TMAX, GP_DT))
         ts_fig.show()
         ts_fig.savefig(os.path.join(FIG_DIR, f'time_series.png'))
         
-        std_fig = plot_std_evolution(ds_indices, simulation_results, sim_indices, np.arange(0, TMAX, GP_DT))
+        std_fig = plot_std_evolution(system_fi.downstream_turbine_indices, ds_indices, simulation_results, sim_indices,
+                                     np.arange(0, TMAX, GP_DT))
         std_fig.show()
         plt.savefig(os.path.join(FIG_DIR, f'std_evolution.png'))
 
-        k_train_fig = plot_k_train_evolution(ds_indices, simulation_results, sim_indices, np.arange(0, TMAX, GP_DT))
+        k_train_fig = plot_k_train_evolution(system_fi.downstream_turbine_indices, ds_indices, simulation_results,
+                                             sim_indices, np.arange(0, TMAX, GP_DT))
         k_train_fig.show()
         plt.savefig(os.path.join(FIG_DIR, f'k_train_evolution.png'))
 
