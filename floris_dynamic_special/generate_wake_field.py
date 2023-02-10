@@ -170,7 +170,7 @@ for t_idx, t in enumerate(upstream_turbine_indices):
     group_idx += 1
 
 
-case_list, case_name_list = CaseGen_General(case_inputs, dir_matrix='.', namebase='wake_field', save_matrix=False, n_cases=-1)#N_CASES)
+case_list, case_name_list = CaseGen_General(case_inputs, dir_matrix='.', namebase='wake_field', save_matrix=False, n_cases=-N_CASES)
 case_list = np.repeat(case_list, N_SEEDS)
 case_name_list = np.concatenate([[name] * N_SEEDS for name in case_name_list])
 n_cases = len(case_name_list)
