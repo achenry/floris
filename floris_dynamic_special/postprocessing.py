@@ -215,8 +215,9 @@ def plot_ts(all_ds_indices, ds_indices, simulation_results, sim_indices, time):
         ax_idx = -1
         if not len(sim_indices[dataset_type]):
             continue
-        
+       
         for j, sim_idx in enumerate(sim_indices[dataset_type]):
+            
             ax_idx += 1
             ts_ax[-1, ax_idx].set(xlabel='Time [s]', xticks=list(range(0, time[-1] + 300, 300)))
             ts_ax[ax_idx, 0].set(ylabel='[m/s]')
@@ -233,7 +234,7 @@ def plot_ts(all_ds_indices, ds_indices, simulation_results, sim_indices, time):
                                color='green', label=f'Predicted Mean')
             # ts_ax[ds_idx, ax_idx].plot(time, simulation_results[dataset_type][sim_idx]['modeled'][:, ds_idx],
             #                    color='purple', label=f'Base Modeled')
-            ts_ax[row_idx, ax_idx].scatter(time, sim_data['meas'][:, ds_idx],
+            ts_ax[row_idx, ax_idx].scatter(time, sim_data['meas'][:, ds_idx] - sim_data['modeled'][:, ds_idx],
                                           color='red',
                                   label=f'Measurements', marker="^")
             ts_ax[row_idx, ax_idx].fill_between(time,
@@ -249,9 +250,14 @@ def plot_ts(all_ds_indices, ds_indices, simulation_results, sim_indices, time):
         ds_idx = all_ds_indices.index(ds)
         for j, sim_idx in enumerate(sim_indices[dataset_type]):
             ax_idx += 1
+            sim_data = simulation_results[dataset_type][sim_idx]
             training_start_idx = np.where(~np.isnan(sim_data['pred'][:, ds_idx]))[0][0]
+            max_training_size = sim_data['max_training_size']
+            training_end_idx = np.where(len(sim_data['k_train'][:, ds_idx]) == max_training_size)[0][0]
             ts_ax[row_idx, ax_idx].plot([training_start_idx, training_start_idx], [min_val, max_val], linestyle='--',
                                        color='#1f77b4')
+            ts_ax[row_idx, ax_idx].plot([training_end_idx, training_end_idx], [min_val, max_val], linestyle='--',
+                                        color='#1f77b4')
 
             # ts_ax[ax_idx].set(
             #     title=f'Downstream Turbine Effective Wind Speeds for {dataset_type.capitalize()}ing Simulation {j} [m/s]')

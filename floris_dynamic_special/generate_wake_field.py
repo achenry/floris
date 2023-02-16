@@ -69,7 +69,7 @@ DEBUG = len(sys.argv) > 1 and sys.argv[1] == 'debug'
 print('debug', DEBUG)
 N_CASES = 9 if DEBUG else 500
 
-TOTAL_TIME = 1200
+TOTAL_TIME = 3600
 
 # hold mean freestream wind speed and wind direction constant over simulation time span
 FREESTREAM_WIND_SPEEDS = [step_change([val], TOTAL_TIME, DT) for val in ([8, 10, 12] if DEBUG else [8, 10, 12])]
@@ -89,11 +89,11 @@ JENSEN_WAKE_COEFFS = [0.034] # np.linspace(0.032, 0.036, 10, endpoint=False)
 #      step_change([-10], TOTAL_TIME, DT),
 #      step_change([0], TOTAL_TIME, DT)
 #     ]
-YAW_ANGLES = [step_change([0.0, 7.5, 15], TOTAL_TIME, DT)] if DEBUG else \
+YAW_ANGLES = [step_change([0, 5, 10, 15, 20, 15, 10, 5, 0], TOTAL_TIME, DT)] if DEBUG else \
     [
-        step_change([5, 10, 15, 20], TOTAL_TIME, DT),
-        step_change([-10, -5, 5, 10], TOTAL_TIME, DT),
-        step_change([-5, -10, -15, -20], TOTAL_TIME, DT)
+        step_change([5, 10, 15, 20, 15, 10, 5, 10, 15], TOTAL_TIME, DT),
+        step_change([-10, -5, 0, 5, 10, 5, 0, -5, -10], TOTAL_TIME, DT),
+        step_change([-5, -10, -15, -20, -15, -10, -5, -10, -15], TOTAL_TIME, DT)
     ]
 # AX_IND_FACTORS = [step_change([0.11, 0.22, 0.22, 0.33], TOTAL_TIME, DT)] if DEBUG else \
 #     [
@@ -104,11 +104,11 @@ YAW_ANGLES = [step_change([0.0, 7.5, 15], TOTAL_TIME, DT)] if DEBUG else \
 #      step_change([0.33], TOTAL_TIME, DT),
 #      step_change([0.22], TOTAL_TIME, DT)
 #     ]
-AX_IND_FACTORS = [step_change([0.11, 0.22, 0.22, 0.33], TOTAL_TIME, DT)] if DEBUG else \
+AX_IND_FACTORS = [step_change([0.11, 0.22, 0.33, 0.22, 0.11, 0.22, 0.33, 0.22, 0.11], TOTAL_TIME, DT)] if DEBUG else \
     [
-     step_change([0.11, 0.22, 0.33, 0.22], TOTAL_TIME, DT),
-     step_change([0.33, 0.22, 0.33, 0.22], TOTAL_TIME, DT),
-     step_change([0.22, 0.33, 0.22, 0.11], TOTAL_TIME, DT)
+     step_change([0.11, 0.22, 0.33, 0.22, 0.11, 0.22, 0.33, 0.22, 0.11], TOTAL_TIME, DT),
+     step_change([0.33, 0.22, 0.33, 0.22, 0.33, 0.22, 0.33, 0.22, 0.33], TOTAL_TIME, DT),
+     step_change([0.22, 0.11, 0.22, 0.11, 0.22, 0.11, 0.22, 0.11, 0.22], TOTAL_TIME, DT)
     ]
 
 # **************************************** Initialization **************************************** #

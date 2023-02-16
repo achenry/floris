@@ -80,9 +80,7 @@ GENERATE_SCALARS = args.generate_scalars
 RUN_SIMULATIONS = args.run_simulations
 GENERATE_PLOTS  = args.generate_plots
 
-# TODO may need more variation in training datasets
-
-TMAX = 1200 #300 if DEBUG else 1200
+TMAX = 3600 #300 if DEBUG else 1200
 N_TOTAL_DATASETS = 4 if DEBUG else 500
 
 # construct case hierarchy
@@ -220,8 +218,17 @@ def initialize(case_idx, full_offline_measurements_df, system_fi, k_delay, noise
         elif scalar_dir is not None and os.path.exists(scalar_dir):
             with open(os.path.join(scalar_dir, f'X_scalar_case{case_idx}_gp{gp_idx}'), 'rb') as fp:
                 gp.X_scalar = pickle.load(fp)
+            
+            gp.X_scalar.mean_ = np.zeros((gp.n_inputs, ))
+            gp.X_scalar.var_ = np.ones((gp.n_inputs, ))
+            gp.X_scalar.scale_ = np.ones((gp.n_inputs, ))
+            
             with open(os.path.join(scalar_dir, f'y_scalar_case{case_idx}_gp{gp_idx}'), 'rb') as fp:
                 gp.y_scalar = pickle.load(fp)
+
+            gp.y_scalar.mean_ = np.zeros((gp.n_outputs, ))
+            gp.y_scalar.var_ = np.ones((gp.n_outputs, ))
+            gp.y_scalar.scale_ = np.ones((gp.n_outputs, ))
         
         X_test_indices = np.random.randint([N_TEST_POINTS_PER_COORD for l in gp.input_labels],
                                            size=(n_test_points, len(gp.input_labels)))
@@ -284,7 +291,8 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
         fi.reinitialize_flow_field(wind_speed=disturbances['FreestreamWindSpeed'][0], wind_direction=disturbances['FreestreamWindDir'][0])
         fi.calculate_wake(yaw_angles=[disturbances[f'YawAngles_{t_idx}'][0] for t_idx in system_fi.turbine_indices],
                 axial_induction=[disturbances[f'AxIndFactors_{t_idx}'][0] for t_idx in system_fi.turbine_indices])
-
+    
+    k_checkpoint = -1 # record of last time we tried to add a batch of data points to gp
     for k_sys, t in enumerate(range(0, TMAX, SYS_DT)):
         print(f'Simulating {k_sys}th Time-Step')
         
@@ -362,7 +370,7 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
 
             # if enough samples have been added to online_measurements_df to make a batch
             if len(online_measurements_df.index) >= batch_size and TRAIN_ONLINE:
-
+                
                 # drop the historic inputs we no longer need for ANY downstream turbine
                 # i.e. keep the last max(effective_dk * k_delay) for all downstream turbines
                 # IF we used some of the current measurements
@@ -370,7 +378,6 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                 
                 y_train_frames.append([])
                 
-
                 # for each downstream turbine
                 for gp_idx, ds_turbine_idx in enumerate(system_fi.downstream_turbine_indices):
 
@@ -386,52 +393,51 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                         = gprs[gp_idx].check_history(online_measurements_df, system_fi,
                                                      k_delay=k_delay,
                                                      dt=GP_CONSTANTS['DT'])
+                    
+                    # gp.k_potential is list of new data points with sufficient history
+                    gprs[gp_idx].k_train_potential = k_to_add.loc[k_to_add > k_checkpoint].to_list()
 
                     # drop time-steps in online_measurements_df for which < effective_dk * k_delay
                     # compute the first k step required for the autoregressive inputs
                     min_k_needed.update(list(
                         online_measurements_df['Time-Step'] - (effective_dk * GP_CONSTANTS['K_DELAY'])))
-
+                    
                     # add new online measurements to existing set of measurements if there exists enough historic measurements
                     # unadded_k is a list of time-steps for which enough historic inputs exist to add to training data AND has not already been added to GPs training data or replay buffer
-                    unadded_k_idx = [k_idx for k_idx, k in k_to_add.iteritems() if k not in gprs[gp_idx].k_train_replay + gprs[gp_idx].k_train]
-                    unadded_k = k_to_add.loc[unadded_k_idx]
                     
-                    # if not history_exists, want to have at least the required batch of new datapoints to choose from
+                    # k_train_potential is a list of the time-steps for which enough historic inputs exist AND
+                    # are not already included in k_train_replay and k_train AND
+                    # do not correspond to duplicate training points
+                    # Xyk_potential are new data points which have not been added to the replay buffer or training data yet and don't include any duplicates
+                    # Xyk_train_replay are data points potential new data points and data points which have been dropped from training data. It is capped to a maximum size.
                     
-                    if len(unadded_k_idx) < batch_size:
-                        # print(f'Not enough history available to fit {gp_idx} th GP with batch of samples, adding to buffer instead')
+                    if len(gprs[gp_idx].k_train_potential) < batch_size:
                         continue
 
-                    # print(f'Enough history available to fit {gp_idx} th GP with {len(unadded_k_idx)} new samples '
-                    #       f'between k = {unadded_k.values[0]} and {unadded_k.values[-1]}')
-                    potential_X_train_new, potential_y_train_new, potential_k_train_new \
-                        = gprs[gp_idx].prepare_data(online_measurements_df,
-                                                    unadded_k,
-                                                    effective_dk.loc[unadded_k_idx],
-                                                    y_modeled=[y_modeled[k][gp_idx] for k in unadded_k.values],
+                    
+                    # remove from gp.k_potential duplicate data points within Xy_potential and Xy_replay
+                    gprs[gp_idx].find_unique_data(online_measurements_df,
+                                                    effective_dk.loc[gprs[gp_idx].k_train_potential],
+                                                    y_modeled=[y_modeled[k][gp_idx] for k in gprs[gp_idx].k_train_potential],
                                                     k_delay=k_delay)
                     
-                    if len(potential_k_train_new) < batch_size:
+                    if len(gprs[gp_idx].k_train_potential) < batch_size:
                         print(
                             f'Not enough history available to fit {gp_idx} th GP with batch of samples, adding to buffer instead')
                         continue
-                        
-                    print(f'Enough history available to fit {gp_idx} th GP with {len(potential_k_train_new)} new samples '
-                          f'between k = {potential_k_train_new.values[0]} and {potential_k_train_new.values[-1]}')
-
-                    # assert potential_X_train_new.shape[0] == len(unadded_k)
-                    gprs[gp_idx].choose_new_data(potential_X_train_new, potential_y_train_new, potential_k_train_new,
-                                                 n_datapoints=batch_size)
                     
-                    # TODO why are there duplicates for a given gp at a given time-step
+                    print(f'Enough history available to fit {gp_idx} th GP with {len(gprs[gp_idx].k_train_potential)} new samples '
+                          f'between k = {gprs[gp_idx].k_train_potential[0]} and {gprs[gp_idx].k_train_potential[-1]}')
+
+                    k_checkpoint = k_gp
+                    gprs[gp_idx].choose_new_data(n_datapoints=batch_size)
+                    
                     # add this GPs data points identifiers for this time-step
                     k_train_frames[k_gp].append(gprs[gp_idx].k_train)
                     
                     # refit gp
                     if FIT_ONLINE:
                         gprs[gp_idx].fit()
-                        # TODO why is this not changing?
                         test_std[k_gp, gp_idx] = gprs[gp_idx].compute_test_std()
                         # test_score[k_gp, gp_idx] = gprs[gp_idx].compute_test_rmse()
 
@@ -463,7 +469,7 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
     # test_rmse = np.vstack(test_rmse)
 
     results = {'true': y_true, 'modeled': y_modeled, 'pred': y_pred, 'std': y_std, 'meas': y_meas,
-               'test_std': test_std, 'k_train': k_train_frames}
+               'test_std': test_std, 'k_train': k_train_frames, 'max_training_size': case['max_training_size']}
     
     filename = f'simulation_data_{dataset_type}_case-{case_idx}_df-{simulation_idx}'
     with open(os.path.join(SIM_SAVE_DIR, filename), 'wb') as fp:
