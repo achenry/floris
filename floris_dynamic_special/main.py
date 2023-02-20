@@ -1,8 +1,10 @@
 # TODO
-# Check k_train X
-# Find upper bound on max_training_size for each simulation X
 # Run DEBUG locally for one wake_field and one case and generate results
-# Write Results, Conclusions
+# Update Methodology
+#   MinMaxScalar for Xinput
+# Write Case Study,
+#  Figure Captions, Case Descriptions
+# Conclusions
 # Run DEBUG on RC
 # Run not DEBUG on RC and generate results
 
@@ -20,13 +22,13 @@ import matplotlib as mpl
 from preprocessing import add_gaussian_noise
 import multiprocessing as mp
 from multiprocessing import Pool
-from postprocessing import plot_training_data, plot_score, plot_std_evolution, plot_ts, plot_error_ts, plot_k_train_evolution, compute_score
+from postprocessing import plot_score, plot_std_evolution, plot_ts, plot_error_ts, plot_k_train_evolution, compute_score, plot_wind_farm
 import matplotlib.animation as animation
 from matplotlib.animation import FuncAnimation, FFMpegWriter
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel, Matern
 import sys
-from floridyn.tools.visualization import plot_turbines_with_fi
 import argparse
+from sklearn.preprocessing import MinMaxScaler
 
 if sys.platform == 'darwin':
     FARM_LAYOUT = '9turb'
@@ -47,11 +49,11 @@ elif sys.platform == 'linux':
     FIG_DIR = f'/scratch/alpine/aohe7145/wake_gp/figs'
     SCALARS_DIR = '/scratch/alpine/aohe7145/wake_gp//scalars'
 
-FIGSIZE = (30, 21)
+FIGSIZE = (42, 21)
 COLOR_1 = 'darkgreen'
 COLOR_2 = 'indigo'
-BIG_FONT_SIZE = 66
-SMALL_FONT_SIZE = 62
+BIG_FONT_SIZE = 70
+SMALL_FONT_SIZE = 66
 mpl.rcParams.update({'font.size': SMALL_FONT_SIZE,
 					 'axes.titlesize': BIG_FONT_SIZE,
 					 'figure.figsize': FIGSIZE,
@@ -60,7 +62,9 @@ mpl.rcParams.update({'font.size': SMALL_FONT_SIZE,
 					 'ytick.labelsize': SMALL_FONT_SIZE,
                      'lines.linewidth': 4,
 					 'figure.autolayout': True,
-                     'lines.markersize':10})
+                     'lines.markersize': 10,
+                     'yaxis.labellocation': 'top'
+                     })
 
 TRAIN_ONLINE = True
 TRAIN_OFFLINE = False
@@ -70,19 +74,19 @@ GP_CONSTANTS['PROPORTION_TRAINING_DATA'] = 1
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--debug', action='store_true', default=False)
 parser.add_argument('-p', '--parallel', action='store_true', default=False)
-parser.add_argument('-gc', '--generate_scalars', action='store_true', default=False)
+parser.add_argument('-gc', '--generate_scalers', action='store_true', default=False)
 parser.add_argument('-rs', '--run_simulations', action='store_true', default=False)
 parser.add_argument('-gp', '--generate_plots', action='store_true', default=False)
 parser.add_argument('case_ids', type=int, nargs='+')
 args = parser.parse_args()
 DEBUG = args.debug
 PARALLEL = args.parallel
-GENERATE_SCALARS = args.generate_scalars
+GENERATE_SCALARS = args.generate_scalers
 RUN_SIMULATIONS = args.run_simulations
 GENERATE_PLOTS  = args.generate_plots
 
 TMAX = 3600 #300 if DEBUG else 1200
-N_TOTAL_DATASETS = 1 if DEBUG else 500
+N_TOTAL_DATASETS = 9 if DEBUG else 500
 
 # construct case hierarchy
 KERNELS = [lambda: ConstantKernel(constant_value_bounds=(1e-12, 1e12)) * RBF(length_scale_bounds=(1e-12, 1e12)),
@@ -187,49 +191,72 @@ def initialize(case_idx, full_offline_measurements_df, system_fi, k_delay, noise
         else:
             y_modeled = np.zeros(len(noisy_measurements_df.index), len(gprs))
         
-    # for each downstream wind turbine
+    # for each downstream wind turbine, set MinMaxScaler up
     for gp_idx, gp in enumerate(gprs):
+        gp.X_scaler = MinMaxScaler()
+        X_range = [[], []]
+
+        for l_idx, l in enumerate(gp.input_labels):
+            if 'AxIndFactors' in l:
+                X_range[0].append(min(AX_IND_FACTOR_TEST_POINTS))
+                X_range[1].append(max(AX_IND_FACTOR_TEST_POINTS))
+            elif 'YawAngles' in l:
+                X_range[0].append(min(YAW_ANGLE_TEST_POINTS))
+                X_range[1].append(max(YAW_ANGLE_TEST_POINTS))
+            elif 'TurbineWindSpeeds' in l:
+                X_range[0].append(min(UPSTREAM_WIND_SPEED_TEST_POINTS))
+                X_range[1].append(max(UPSTREAM_WIND_SPEED_TEST_POINTS))
+            elif 'FreestreamWindDir' in l:
+                X_range[0].append(min(UPSTREAM_WIND_DIR_TEST_POINTS))
+                X_range[1].append(max(UPSTREAM_WIND_DIR_TEST_POINTS))
+         
+        gp.X_scaler.fit(X_range)
         
-        if scalar_dir is None or not os.path.exists(scalar_dir) or train_offline:
-            k_to_add, effective_dk, reduced_effective_dk, history_exists = \
-                gp.check_history(noisy_measurements_df, system_fi, k_delay=k_delay, dt=GP_CONSTANTS['DT'])
-
-            # print(noisy_measurements_df.index[-1], effective_dk, gp.turbine_index)
-
-            if not history_exists:
-                continue
-
-            # shuffle order to give random data points to GP, then truncate to number of data points needed
-            shuffle_idx = list(k_to_add.index)
-            np.random.shuffle(shuffle_idx)
-            shuffle_idx = shuffle_idx[:max_training_size]
-
-            # compute the base model values for the wake, given all of the freestream wind speeds, yaw angles and axial induction factors over time for each time-series dataset
-            X_train_new, y_train_new, _ = gp.prepare_data(noisy_measurements_df, k_to_add.loc[shuffle_idx],
-                                                       reduced_effective_dk.loc[shuffle_idx],
-                                                       y_modeled=y_modeled[shuffle_idx, gp_idx],
-                                                       k_delay=k_delay)
-
-            if train_offline:
-                gp.add_data(X_train_new, y_train_new, k_to_add.loc[shuffle_idx], is_online=False)
-
-                # Fit data
-                gp.fit()
-                
-        elif scalar_dir is not None and os.path.exists(scalar_dir):
-            with open(os.path.join(scalar_dir, f'X_scalar_case{case_idx}_gp{gp_idx}'), 'rb') as fp:
-                gp.X_scalar = pickle.load(fp)
-            
-            gp.X_scalar.mean_ = np.zeros((gp.n_inputs, ))
-            gp.X_scalar.var_ = np.ones((gp.n_inputs, ))
-            gp.X_scalar.scale_ = np.ones((gp.n_inputs, ))
-            
-            with open(os.path.join(scalar_dir, f'y_scalar_case{case_idx}_gp{gp_idx}'), 'rb') as fp:
-                gp.y_scalar = pickle.load(fp)
-
-            gp.y_scalar.mean_ = np.zeros((gp.n_outputs, ))
-            gp.y_scalar.var_ = np.ones((gp.n_outputs, ))
-            gp.y_scalar.scale_ = np.ones((gp.n_outputs, ))
+        # gp.y_scaler = MinMaxScaler()
+        # y_range = [[min(UPSTREAM_WIND_SPEED_TEST_POINTS)], [max(UPSTREAM_WIND_SPEED_TEST_POINTS)]]
+        #
+        # gp.y_scaler.fit(y_range)
+        
+        # if scalar_dir is None or not os.path.exists(scalar_dir) or train_offline:
+        #     k_to_add, effective_dk, reduced_effective_dk, history_exists = \
+        #         gp.check_history(noisy_measurements_df, system_fi, k_delay=k_delay, dt=GP_CONSTANTS['DT'])
+        #
+        #     # print(noisy_measurements_df.index[-1], effective_dk, gp.turbine_index)
+        #
+        #     if not history_exists:
+        #         continue
+        #
+        #     # shuffle order to give random data points to GP, then truncate to number of data points needed
+        #     shuffle_idx = list(k_to_add.index)
+        #     np.random.shuffle(shuffle_idx)
+        #     shuffle_idx = shuffle_idx[:max_training_size]
+        #
+        #     # compute the base model values for the wake, given all of the freestream wind speeds, yaw angles and axial induction factors over time for each time-series dataset
+        #     X_train_new, y_train_new, _ = gp.prepare_data(noisy_measurements_df, k_to_add.loc[shuffle_idx],
+        #                                                reduced_effective_dk.loc[shuffle_idx],
+        #                                                y_modeled=y_modeled[shuffle_idx, gp_idx],
+        #                                                k_delay=k_delay)
+        #
+        #     if train_offline:
+        #         gp.add_data(X_train_new, y_train_new, k_to_add.loc[shuffle_idx], is_online=False)
+        #
+        #         # Fit data
+        #         gp.fit()
+        #
+        # elif scalar_dir is not None and os.path.exists(scalar_dir):
+        #     with open(os.path.join(scalar_dir, f'X_scaler_case{case_idx}_gp{gp_idx}'), 'rb') as fp:
+        #         gp.X_scaler = pickle.load(fp)
+        #
+        #     gp.X_scaler.mean_ = np.zeros((gp.n_inputs, ))
+        #     gp.X_scaler.var_ = np.ones((gp.n_inputs, ))
+        #     gp.X_scaler.scale_ = np.ones((gp.n_inputs, ))
+        #
+        #     with open(os.path.join(scalar_dir, f'y_scaler_case{case_idx}_gp{gp_idx}'), 'rb') as fp:
+        #         gp.y_scaler = pickle.load(fp)
+        #
+        #     gp.y_scaler.mean_ = np.zeros((gp.n_outputs, ))
+        #     gp.y_scaler.var_ = np.ones((gp.n_outputs, ))
+        #     gp.y_scaler.scale_ = np.ones((gp.n_outputs, ))
         
         X_test_indices = np.random.randint([N_TEST_POINTS_PER_COORD for l in gp.input_labels],
                                            size=(n_test_points, len(gp.input_labels)))
@@ -245,7 +272,7 @@ def initialize(case_idx, full_offline_measurements_df, system_fi, k_delay, noise
             elif 'FreestreamWindDir' in l:
                 X_test.append(UPSTREAM_WIND_DIR_TEST_POINTS[X_test_indices[:, l_idx]])
 
-        gp.X_test = gp.X_scalar.transform(np.transpose(X_test))
+        gp.X_test = gp.X_scaler.transform(np.transpose(X_test))
 
     return gprs
 
@@ -386,7 +413,7 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                     # plot evolution of gprs[gp_idx].y_train
                     # if len(gprs[gp_idx].y_train):
                     #     y_train_unique, y_train_count = np.unique(gprs[gp_idx].y_train, return_counts=True)
-                    #     y_train_unique = gprs[gp_idx].y_scalar.inverse_transform(
+                    #     y_train_unique = gprs[gp_idx].y_scaler.inverse_transform(
                     #         y_train_unique.reshape((-1, 1))).reshape((1, -1))[0]
                     #     y_train_frames[-1].append(sorted(list(zip(y_train_unique, y_train_count)), key=lambda tup: tup[0]))
                     
@@ -401,8 +428,8 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
 
                     # drop time-steps in online_measurements_df for which < effective_dk * k_delay
                     # compute the first k step required for the autoregressive inputs
-                    min_k_needed.update(list(
-                        online_measurements_df['Time-Step'] - (effective_dk * GP_CONSTANTS['K_DELAY'])))
+                    # min_k_needed.update(list(
+                    #     online_measurements_df['Time-Step'] - (effective_dk * GP_CONSTANTS['K_DELAY'])))
                     
                     # add new online measurements to existing set of measurements if there exists enough historic measurements
                     # unadded_k is a list of time-steps for which enough historic inputs exist to add to training data AND has not already been added to GPs training data or replay buffer
@@ -451,11 +478,11 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                         test_std[k_gp, gp_idx] = gprs[gp_idx].compute_test_std()
                         # test_score[k_gp, gp_idx] = gprs[gp_idx].compute_test_rmse()
 
-                min_k_needed = max(min(min_k_needed), 0)
-                if min_k_needed > 0:
-                    print(f'Removing samples up to k={min_k_needed} from online measurements buffer because no GP needs '
-                          f'them for autoregressive inputs.')
-                    online_measurements_df = online_measurements_df.loc[min_k_needed:]
+                # min_k_needed = max(min(min_k_needed), 0)
+                # if min_k_needed > 0:
+                #     print(f'Removing samples up to k={min_k_needed} from online measurements buffer because no GP needs '
+                #           f'them for autoregressive inputs.')
+                #     online_measurements_df = online_measurements_df.loc[min_k_needed:]
 
             # for each downstream turbine
             for gp_idx, ds_idx in enumerate(system_fi.downstream_turbine_indices):
@@ -467,8 +494,8 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                 y_pred[k_gp].append(y_pred_k)
                 y_std[k_gp].append(y_std_k)
 
-                y_meas_k = current_measurements[f'TurbineWindSpeeds_{ds_idx}']
-                y_meas[k_gp].append(y_meas_k[0])
+                y_meas_k = current_measurements[f'TurbineWindSpeeds_{ds_idx}'][0]
+                y_meas[k_gp].append(y_meas_k)
 
     y_true = np.vstack(y_true)
     y_modeled = np.vstack(y_modeled)
@@ -476,7 +503,7 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
     y_std = np.vstack(y_std)
     y_meas = np.vstack(y_meas)
     test_std = np.vstack(test_std)
-    # test_rmse = np.vstack(test_rmse)
+    training_size = np.vstack(training_size)
 
     results = {'true': y_true, 'modeled': y_modeled, 'pred': y_pred, 'std': y_std, 'meas': y_meas,
                'test_std': test_std,
@@ -596,10 +623,10 @@ if __name__ == '__main__':
         for case_idx, case in enumerate(case_gprs):
             if case is not None:
                 for gp_idx, gp in enumerate(case):
-                    with open(os.path.join(SCALARS_DIR, f'X_scalar_case{case_idx}_gp{gp_idx}'), 'wb') as fp:
-                        pickle.dump(gp.X_scalar, fp)
-                    with open(os.path.join(SCALARS_DIR, f'y_scalar_case{case_idx}_gp{gp_idx}'), 'wb') as fp:
-                        pickle.dump(gp.y_scalar, fp)
+                    with open(os.path.join(SCALARS_DIR, f'X_scaler_case{case_idx}_gp{gp_idx}'), 'wb') as fp:
+                        pickle.dump(gp.X_scaler, fp)
+                    with open(os.path.join(SCALARS_DIR, f'y_scaler_case{case_idx}_gp{gp_idx}'), 'wb') as fp:
+                        pickle.dump(gp.y_scaler, fp)
 
     # start simulation
     GP_DT = GP_CONSTANTS['DT']
@@ -652,7 +679,8 @@ if __name__ == '__main__':
         # plot the true vs predicted gp values over the course of the simulation
 
         
-        score_type = 'rmse'
+        score_type = 'r2'
+        # turbine_sim_score is n_downstream_turbines X n_simulations matrix of scores
         sim_score, turbine_sim_score, turbine_score_mean, turbine_score_std \
             = compute_score(system_fi, simulation_results, score_type=score_type)
 
@@ -668,29 +696,32 @@ if __name__ == '__main__':
 
         # choose training and test datasets with lowest mean rmse over all turbines
         n_ts_plots = 2
-        sim_indices = {'train': np.argsort(sim_score['train'])[:n_ts_plots]}
+        if score_type == 'r2': # best score is greatest
+            sim_indices = {'train': np.argsort(sim_score['train'])[-n_ts_plots:]}
+        elif score_type == 'rmse': # best score is least
+            sim_indices = {'train': np.argsort(sim_score['train'])[:n_ts_plots]}
 
         ts_fig = plot_ts(system_fi.downstream_turbine_indices, ds_indices, simulation_results, sim_indices, np.arange(0, TMAX, GP_DT))
         ts_fig.show()
         ts_fig.savefig(os.path.join(FIG_DIR, f'time_series.png'))
         
+        # TODO check why test_std is so high
         std_fig = plot_std_evolution(system_fi.downstream_turbine_indices, ds_indices, simulation_results, sim_indices,
                                      np.arange(0, TMAX, GP_DT))
         std_fig.show()
         plt.savefig(os.path.join(FIG_DIR, f'std_evolution.png'))
         
-        # TODO some entries of k_train only don't contain lists for each gp, others are empty in between full ones
-        # k_train_fig = plot_k_train_evolution(system_fi.downstream_turbine_indices, ds_indices, simulation_results,
-        #                                      sim_indices, np.arange(0, TMAX, GP_DT))
-        # k_train_fig.show()
-        # plt.savefig(os.path.join(FIG_DIR, f'k_train_evolution.png'))
+        k_train_fig = plot_k_train_evolution(system_fi.downstream_turbine_indices, ds_indices, simulation_results,
+                                             sim_indices, np.arange(0, TMAX, GP_DT))
+        k_train_fig.show()
+        plt.savefig(os.path.join(FIG_DIR, f'k_train_evolution.png'))
 
-        error_ts_fig = plot_error_ts(system_fi, simulation_results, sim_indices)
+        error_ts_fig = plot_error_ts(system_fi.downstream_turbine_indices, ds_indices, simulation_results, sim_indices, np.arange(0, TMAX, GP_DT))
         error_ts_fig.show()
         plt.savefig(os.path.join(FIG_DIR, f'error_ts.png'))
         
-        farm_fig, farm_ax = plt.subplots(1, 1)
-        plot_turbines_with_fi(farm_ax, system_fi)
+        farm_fig = plot_wind_farm(system_fi)
+        farm_fig.show()
         farm_fig.savefig(os.path.join(FIG_DIR, f'wind_farm.png'))
 
         # def plot_score_evolution():

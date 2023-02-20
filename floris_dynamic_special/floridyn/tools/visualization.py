@@ -167,7 +167,7 @@ def visualize_cut_plane(
     # )
 
     # Make equal axis
-    ax.set_aspect("equal")
+    # ax.set_aspect("equal")
 
     # Return im
     return im

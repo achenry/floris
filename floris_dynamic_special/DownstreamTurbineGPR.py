@@ -6,9 +6,6 @@ import pickle
 from scipy.optimize import minimize
 from preprocessing import get_paths, collect_raw_data, generate_input_labels, generate_input_vector
 from numpy.linalg import norm
-from sklearn.preprocessing import StandardScaler
-from itertools import chain
-import pandas as pd
 
 # GOAL: learn propagation speed
 # GOAL: changers in ax_ind factor of upstream turbines -> changes in effective wind speed at downstream turbines
@@ -34,14 +31,12 @@ GP_CONSTANTS = {'PROPORTION_TRAINING_DATA': 0.8,
 }
 
 N_TEST_POINTS_PER_COORD = 3
-AX_IND_FACTOR_TEST_POINTS = np.linspace(0.11, 0.33, N_TEST_POINTS_PER_COORD)
+AX_IND_FACTOR_TEST_POINTS = np.linspace(0.1, 0.3, N_TEST_POINTS_PER_COORD)
 YAW_ANGLE_TEST_POINTS = np.linspace(-15, 15, N_TEST_POINTS_PER_COORD)
 UPSTREAM_WIND_SPEED_TEST_POINTS = np.linspace(8, 12, N_TEST_POINTS_PER_COORD)
 UPSTREAM_WIND_DIR_TEST_POINTS = np.linspace(250, 270, N_TEST_POINTS_PER_COORD)
 
 # TODO
-# 1) generate datasets with layout as in Jean's SOWFA data, test and plot on mac for 2 turb case, run and save on eagle for 9 turb case
-# 3) formulate and implement exploration maximization algorithm
 
 class DownstreamTurbineGPR:
     def __init__(self, kernel,
@@ -59,8 +54,7 @@ class DownstreamTurbineGPR:
         self.k_train_replay = []
         self.k_train_potential = []
 
-        self.X_scalar = None
-        self.y_scalar = None
+        self.X_scaler = None
         self.max_training_size = max_training_size
         self.max_replay_size = max_training_size
         self.gpr = GaussianProcessRegressor(
@@ -74,7 +68,6 @@ class DownstreamTurbineGPR:
 
     def compute_test_std(self):
         _, test_std = self.gpr.predict(self.X_test, return_std=True)
-        test_std = test_std / self.y_scalar.scale_
         return np.sum(test_std)
 
     def compute_effective_dk(self, system_fi, current_measurement_rows, k_delay=GP_CONSTANTS['K_DELAY'],
@@ -161,13 +154,13 @@ class DownstreamTurbineGPR:
         self.k_train_potential = [self.k_train_potential[i] for i in keep_idx]
         
 
-        if self.X_scalar is None:
-            self.X_scalar = StandardScaler().fit(self.X_train_potential)
-            self.y_scalar = StandardScaler().fit(self.y_train_potential)
+        # if self.X_scaler is None:
+        #     self.X_scaler = StandardScaler().fit(self.X_train_potential)
+        #     self.y_scaler = StandardScaler().fit(self.y_train_potential)
 
         if self.X_train_potential.shape[0]:
-            self.X_train_potential = self.X_scalar.transform(self.X_train_potential)
-            self.y_train_potential = self.y_scalar.transform(self.y_train_potential)
+            self.X_train_potential = self.X_scaler.transform(self.X_train_potential)
+            # self.y_train_potential = self.y_scaler.transform(self.y_train_potential)
     
     def add_data(self, new_X_train, new_y_train, new_k_train, is_online):
         
@@ -209,11 +202,8 @@ class DownstreamTurbineGPR:
             
             X_ip = generate_input_vector(
                     measurements_df, k, self.upstream_turbine_indices, effective_dk, k_delay)[1]
-            X_ip = self.X_scalar.transform([X_ip])
-            mean, std = self.gpr.predict(X_ip, return_std=True)
-           
-            y_pred = self.y_scalar.inverse_transform(np.atleast_2d(mean)).squeeze()
-            y_std = (std / self.y_scalar.scale_).squeeze()
+            X_ip = self.X_scaler.transform([X_ip])
+            y_pred, y_std = self.gpr.predict(X_ip, return_std=True)
 
             return y_pred, y_std
         else:
