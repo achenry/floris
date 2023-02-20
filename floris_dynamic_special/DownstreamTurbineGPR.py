@@ -171,10 +171,12 @@ class DownstreamTurbineGPR:
     
     def add_data(self, new_X_train, new_y_train, new_k_train, is_online):
         
-        self.X_train = np.vstack([self.X_train, new_X_train])[-self.max_training_size if self.max_training_size > -1
-                                                              else 0:, :]
-        self.y_train = np.vstack([self.y_train, new_y_train])[-self.max_training_size if self.max_training_size > -1
-                                                              else 0:, :]
+        self.X_train = np.vstack([self.X_train, new_X_train])
+        self.y_train = np.vstack([self.y_train, new_y_train])
+        
+        if self.y_train.shape[0] > self.max_training_size:
+            self.X_train = self.X_train[-self.max_training_size if self.max_training_size > -1 else 0:,:]
+            self.y_train = self.y_train[-self.max_training_size if self.max_training_size > -1 else 0:,:]
         
         if is_online:
             self.k_train = (self.k_train + list(new_k_train))[-self.max_training_size if self.max_training_size > -1

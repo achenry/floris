@@ -159,7 +159,7 @@ def plot_error_ts(system_fi, simulation_results, sim_indices):
     return error_fig
 
 
-def plot_score(system_fi, turbine_score, turbine_score_mean, turbine_score_std, score_type):
+def plot_score(system_fi, turbine_score):
     """
    RMSE mean and std (true turbine effective wind speed vs. GP estimate) over all simulations for
     each downstream turbine
@@ -253,11 +253,20 @@ def plot_ts(all_ds_indices, ds_indices, simulation_results, sim_indices, time):
             sim_data = simulation_results[dataset_type][sim_idx]
             training_start_idx = np.where(~np.isnan(sim_data['pred'][:, ds_idx]))[0][0]
             max_training_size = sim_data['max_training_size']
-            training_end_idx = np.where(len(sim_data['k_train'][:, ds_idx]) == max_training_size)[0][0]
+            # training_end_idx = np.where(len(sim_data['k_train'][:, ds_idx]) == max_training_size)[0][0]
+            training_end_idx = -1
+            for k, k_train in enumerate(sim_data['k_train']):
+                if len(k_train[row_idx]) == max_training_size:
+                    training_end_idx = k
+                    break
+            
             ts_ax[row_idx, ax_idx].plot([training_start_idx, training_start_idx], [min_val, max_val], linestyle='--',
                                        color='#1f77b4')
-            ts_ax[row_idx, ax_idx].plot([training_end_idx, training_end_idx], [min_val, max_val], linestyle='--',
+            if training_end_idx > -1:
+                ts_ax[row_idx, ax_idx].plot([training_end_idx, training_end_idx], [min_val, max_val], linestyle='--',
                                         color='#1f77b4')
+            else:
+                print(f'No time-step with full training dataset for turbine {ds}')
 
             # ts_ax[ax_idx].set(
             #     title=f'Downstream Turbine Effective Wind Speeds for {dataset_type.capitalize()}ing Simulation {j} [m/s]')

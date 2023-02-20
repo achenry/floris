@@ -89,11 +89,12 @@ JENSEN_WAKE_COEFFS = [0.034] # np.linspace(0.032, 0.036, 10, endpoint=False)
 #      step_change([-10], TOTAL_TIME, DT),
 #      step_change([0], TOTAL_TIME, DT)
 #     ]
-YAW_ANGLES = [step_change([0, 5, 10, 15, 20, 15, 10, 5, 0], TOTAL_TIME, DT)] if DEBUG else \
+# 12 values for a change every 5 minutes
+YAW_ANGLES = [step_change([0, 5, 10, 5, 10, 15, 10, 15, 20, 15, 10, 5], TOTAL_TIME, DT)] if DEBUG else \
     [
-        step_change([5, 10, 15, 20, 15, 10, 5, 10, 15], TOTAL_TIME, DT),
-        step_change([-10, -5, 0, 5, 10, 5, 0, -5, -10], TOTAL_TIME, DT),
-        step_change([-5, -10, -15, -20, -15, -10, -5, -10, -15], TOTAL_TIME, DT)
+        step_change([5, 10, 5, 10, 15, 10, 15, 20, 15, 10, 5, 0], TOTAL_TIME, DT), # all positive angles
+        step_change([-15, -10, -5, 0, 5, 10, 15, 10, 5, 0, -5, -10], TOTAL_TIME, DT), # negative to positive angles
+        step_change([-5, -10, -5, -10, -15, -10, -15, -20, -15, -10, -5, 0], TOTAL_TIME, DT) # all negative angles
     ]
 # AX_IND_FACTORS = [step_change([0.11, 0.22, 0.22, 0.33], TOTAL_TIME, DT)] if DEBUG else \
 #     [
@@ -104,11 +105,32 @@ YAW_ANGLES = [step_change([0, 5, 10, 15, 20, 15, 10, 5, 0], TOTAL_TIME, DT)] if 
 #      step_change([0.33], TOTAL_TIME, DT),
 #      step_change([0.22], TOTAL_TIME, DT)
 #     ]
-AX_IND_FACTORS = [step_change([0.11, 0.22, 0.33, 0.22, 0.11, 0.22, 0.33, 0.22, 0.11], TOTAL_TIME, DT)] if DEBUG else \
+# 24 values for a change every 2.5 minutes
+AX_IND_FACTORS = [step_change([0.1, 0.2, 0.1, 0.2,
+                               0.3, 0.2, 0.3, 0.2,
+                               0.1, 0.2, 0.3, 0.2,
+                               0.1, 0.2, 0.3, 0.2,
+                               0.1, 0.2, 0.1, 0.2,
+                               0.3, 0.2, 0.3, 0.2], TOTAL_TIME, DT)] if DEBUG else \
     [
-     step_change([0.11, 0.22, 0.33, 0.22, 0.11, 0.22, 0.33, 0.22, 0.11], TOTAL_TIME, DT),
-     step_change([0.33, 0.22, 0.33, 0.22, 0.33, 0.22, 0.33, 0.22, 0.33], TOTAL_TIME, DT),
-     step_change([0.22, 0.11, 0.22, 0.11, 0.22, 0.11, 0.22, 0.11, 0.22], TOTAL_TIME, DT)
+     step_change([0.2, 0.25, 0.3, 0.25,
+                  0.2, 0.25, 0.2, 0.25,
+                  0.3, 0.25, 0.3, 0.25,
+                  0.2, 0.25, 0.2, 0.25,
+                  0.3, 0.25, 0.3, 0.25,
+                  0.2, 0.25, 0.2, 0.25,], TOTAL_TIME, DT), # higher ai factors
+     step_change([0.15, 0.2, 0.25, 0.2,
+                  0.15, 0.1, 0.15, 0.2,
+                  0.25, 0.3, 0.25, 0.2,
+                  0.15, 0.1, 0.15, 0.2,
+                  0.25, 0.3, 0.25, 0.2,
+                  0.15, 0.1, 0.15, 0.2], TOTAL_TIME, DT), # middlin ai factors
+     step_change([0.1, 0.15, 0.1, 0.15,
+                  0.2, 0.15, 0.2, 0.15,
+                  0.1, 0.15, 0.1, 0.15,
+                  0.2, 0.15, 0.2, 0.15,
+                  0.1, 0.15, 0.1, 0.15,
+                  0.2, 0.15, 0.2, 0.15], TOTAL_TIME, DT) # low ai factors
     ]
 
 # **************************************** Initialization **************************************** #

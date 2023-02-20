@@ -1,6 +1,7 @@
 # TODO
-# Write .csv data files at checkpoints
-# Run DEBUG locally and generate results
+# Check k_train X
+# Find upper bound on max_training_size for each simulation X
+# Run DEBUG locally for one wake_field and one case and generate results
 # Write Results, Conclusions
 # Run DEBUG on RC
 # Run not DEBUG on RC and generate results
@@ -81,18 +82,18 @@ RUN_SIMULATIONS = args.run_simulations
 GENERATE_PLOTS  = args.generate_plots
 
 TMAX = 3600 #300 if DEBUG else 1200
-N_TOTAL_DATASETS = 4 if DEBUG else 500
+N_TOTAL_DATASETS = 1 if DEBUG else 500
 
 # construct case hierarchy
 KERNELS = [lambda: ConstantKernel(constant_value_bounds=(1e-12, 1e12)) * RBF(length_scale_bounds=(1e-12, 1e12)),
            lambda: ConstantKernel(constant_value_bounds=(1e-12, 1e12)) * Matern(length_scale_bounds=(1e-12, 1e12))]
-MAX_TRAINING_SIZE_VALS = [20, 40, 80, 160]
-NOISE_STD_VALS = [0.0001, 0.001, 0.01, 0.1]
-K_DELAY_VALS = [2, 4, 6, 8]
-BATCH_SIZE_VALS = [1, 2, 3, 4]
+MAX_TRAINING_SIZE_VALS = [5, 10, 20]
+NOISE_STD_VALS = [0.001, 0.01, 0.1]
+K_DELAY_VALS = [2, 4, 8]
+BATCH_SIZE_VALS = [1, 2, 4]
 default_kernel = lambda: ConstantKernel(constant_value_bounds=(1e-12, 1e12)) * RBF(length_scale_bounds=(1e-12, 1e12))
 default_kernel_idx = 0
-default_max_training_size = 40
+default_max_training_size = 10
 default_batch_size = 2
 default_noise_std = 0.01
 default_k_delay = 4
@@ -249,7 +250,7 @@ def initialize(case_idx, full_offline_measurements_df, system_fi, k_delay, noise
     return gprs
 
 def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
-                          current_input_labels, k_delay, noise_std, batch_size, dataset_type):
+                          current_input_labels, k_delay, noise_std, batch_size, max_training_size, dataset_type):
     
     print(f'Running Simulation {simulation_idx} for Case {case_idx}')
     
@@ -281,7 +282,8 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
     y_std = [[] for i in range(kmax_gp)]
     y_meas = [[] for i in range(kmax_gp)]
     y_train_frames = []
-    k_train_frames = [[] for i in range(kmax_gp)]
+    k_train_frames = [[[] for gp in range(len(gprs))] for i in range(kmax_gp)]
+    training_size = [[0 for gp in range(len(gprs))] for i in range(kmax_gp)]
     test_std = np.nan * np.ones((kmax_gp, len(gprs)))
     # test_rmse = np.nan * np.ones((kmax_gp, len(gprs)))
 
@@ -382,11 +384,11 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                 for gp_idx, ds_turbine_idx in enumerate(system_fi.downstream_turbine_indices):
 
                     # plot evolution of gprs[gp_idx].y_train
-                    if len(gprs[gp_idx].y_train):
-                        y_train_unique, y_train_count = np.unique(gprs[gp_idx].y_train, return_counts=True)
-                        y_train_unique = gprs[gp_idx].y_scalar.inverse_transform(
-                            y_train_unique.reshape((-1, 1))).reshape((1, -1))[0]
-                        y_train_frames[-1].append(sorted(list(zip(y_train_unique, y_train_count)), key=lambda tup: tup[0]))
+                    # if len(gprs[gp_idx].y_train):
+                    #     y_train_unique, y_train_count = np.unique(gprs[gp_idx].y_train, return_counts=True)
+                    #     y_train_unique = gprs[gp_idx].y_scalar.inverse_transform(
+                    #         y_train_unique.reshape((-1, 1))).reshape((1, -1))[0]
+                    #     y_train_frames[-1].append(sorted(list(zip(y_train_unique, y_train_count)), key=lambda tup: tup[0]))
                     
                     # k_to_add is a list of the time-steps for which enough historic inputs exist to add to training data
                     k_to_add, effective_dk, effective_dk_to_add, history_exists \
@@ -412,6 +414,9 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                     # Xyk_train_replay are data points potential new data points and data points which have been dropped from training data. It is capped to a maximum size.
                     
                     if len(gprs[gp_idx].k_train_potential) < batch_size:
+                        for k_tr in gprs[gp_idx].k_train:
+                            k_train_frames[k_gp][gp_idx].append(k_tr)
+                        training_size[k_gp][gp_idx] = len(gprs[gp_idx].k_train)
                         continue
 
                     
@@ -424,6 +429,9 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                     if len(gprs[gp_idx].k_train_potential) < batch_size:
                         print(
                             f'Not enough history available to fit {gp_idx} th GP with batch of samples, adding to buffer instead')
+                        for k_tr in gprs[gp_idx].k_train:
+                            k_train_frames[k_gp][gp_idx].append(k_tr)
+                        training_size[k_gp][gp_idx] = len(gprs[gp_idx].k_train)
                         continue
                     
                     print(f'Enough history available to fit {gp_idx} th GP with {len(gprs[gp_idx].k_train_potential)} new samples '
@@ -433,7 +441,9 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                     gprs[gp_idx].choose_new_data(n_datapoints=batch_size)
                     
                     # add this GPs data points identifiers for this time-step
-                    k_train_frames[k_gp].append(gprs[gp_idx].k_train)
+                    for k_tr in gprs[gp_idx].k_train:
+                        k_train_frames[k_gp][gp_idx].append(k_tr)
+                    training_size[k_gp][gp_idx] = len(gprs[gp_idx].k_train)
                     
                     # refit gp
                     if FIT_ONLINE:
@@ -469,7 +479,8 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
     # test_rmse = np.vstack(test_rmse)
 
     results = {'true': y_true, 'modeled': y_modeled, 'pred': y_pred, 'std': y_std, 'meas': y_meas,
-               'test_std': test_std, 'k_train': k_train_frames, 'max_training_size': case['max_training_size']}
+               'test_std': test_std,
+               'k_train': k_train_frames, 'max_training_size': max_training_size, 'training_size': training_size}
     
     filename = f'simulation_data_{dataset_type}_case-{case_idx}_df-{simulation_idx}'
     with open(os.path.join(SIM_SAVE_DIR, filename), 'wb') as fp:
@@ -480,25 +491,39 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                       tight_layout=True)
     
     # training_max_count = max(max(tup[1] for tup in arr[gp_idx]) if len(arr[gp_idx]) else -1 for gp_idx in range(len(gprs)) for arr in y_train_frames if len(arr))
-    training_y_vals = [[tup[0] for tup in arr[gp_idx]] for gp_idx in range(len(gprs)) for arr in y_train_frames if len(arr)]
-    training_y_counts = [[tup[1] for tup in arr[gp_idx]] for gp_idx in range(len(gprs)) for arr in y_train_frames if len(arr)]
-    # if len(training_y_vals)
-    training_y_vals = sorted(set(np.concatenate(training_y_vals))) if len(training_y_vals) else []
-    training_max_count = np.max(training_y_counts) if len(training_y_counts) else -1
+    # training_y_vals = [[[tup[0] for tup in arr[gp_idx]] if len(arr[gp_idx]) else None for gp_idx in range(len(gprs))] if len(arr) else None for arr in y_train_frames]
+    # training_y_vals = []
+    # training_y_counts = []
+    # training_y_vals = np.nan * np.ones((TMAX, len(gprs)))
+    # training_y_counts = np.nan * np.ones((TMAX, len(gprs)))
+    # for k, y_train_frame in enumerate(y_train_frames):
+    #     # if training data exists for this time-step
+    #     if len(y_train_frame):
+    #         # if training data exists for this gp at this time-step
+    #         for gp_idx, gp_arr in enumerate(y_train_frame):
+    #             if len(gp_arr):
+    #                 training_y_vals[k, gp_idx] = [tup[0] for tup in gp_arr]
+    #                 training_y_counts[k, gp_idx] = [tup[1] for tup in gp_arr]
+    #
+    #
+    # # training_y_counts = [[tup[1] for tup in arr[gp_idx] if len(arr[gp_idx])] for gp_idx in range(len(gprs)) for arr in y_train_frames if len(arr)]
+    # # if len(training_y_vals)
+    # training_y_vals = sorted(set(np.concatenate(training_y_vals))) if len(training_y_vals) else []
+    # training_max_count = np.max(training_y_counts) if len(training_y_counts) else -1
 
-    def animate(k_idx, *fargs):
-        # training_ax = training_fig.add_subplot(1, 1, 1)
-        training_ax.clear()
-        if training_max_count > -1:
-            training_ax.set_ylim([0, training_max_count])
-        training_ax.set_xticks(training_y_vals)
-        training_ax.set_facecolor(plt.cm.Greys(0.2))
-        # [spine.set_visible(False) for spine in training_ax.spines.values()] # remove chart outlines
-
-        gp_idx = fargs[0]
-        count_vals = [tup[1] for tup in y_train_frames[k_idx][gp_idx]]
-        y_vals = [tup[0] for tup in y_train_frames[k_idx][gp_idx]]
-        training_ax.bar(y_vals, count_vals, width=0.05, align='center')
+    # def animate(k_idx, *fargs):
+    #     # training_ax = training_fig.add_subplot(1, 1, 1)
+    #     training_ax.clear()
+    #     if training_max_count > -1:
+    #         training_ax.set_ylim([0, training_max_count])
+    #     training_ax.set_xticks(training_y_vals)
+    #     training_ax.set_facecolor(plt.cm.Greys(0.2))
+    #     # [spine.set_visible(False) for spine in training_ax.spines.values()] # remove chart outlines
+    #
+    #     gp_idx = fargs[0]
+    #     count_vals = [tup[1] for tup in y_train_frames[k_idx][gp_idx]]
+    #     y_vals = [tup[0] for tup in y_train_frames[k_idx][gp_idx]]
+    #     training_ax.bar(y_vals, count_vals, width=0.05, align='center')
 
     # for gp_idx, ds_idx in enumerate(system_fi.downstream_turbine_indices):
 
@@ -590,7 +615,8 @@ if __name__ == '__main__':
     if PARALLEL and RUN_SIMULATIONS:
         simulation_train_cases = np.concatenate([[(case_idx, case_gprs[case_idx], df, df_idx,
                                                    current_input_labels,
-                                                   case['k_delay'], case['noise_std'], case['batch_size'], 'train')
+                                                   case['k_delay'], case['noise_std'], case['batch_size'],
+                                                   case['max_training_size'], 'train')
                                                   for df_idx, df in enumerate(wake_field_dfs['train'])]
                                                  for case_idx, case in enumerate(cases) if case is not None])
 
@@ -604,7 +630,8 @@ if __name__ == '__main__':
                 for df_idx, df in enumerate(wake_field_dfs['train']):
                     simulations_train.append(run_single_simulation(case_idx, case_gprs[case_idx], df, df_idx,
                                                    current_input_labels,
-                                                   case['k_delay'], case['noise_std'], case['batch_size'], 'train'))
+                                                   case['k_delay'], case['noise_std'], case['batch_size'],
+                                                                   case['max_training_size'], 'train'))
                 
 
     if GENERATE_PLOTS:
@@ -629,7 +656,7 @@ if __name__ == '__main__':
         sim_score, turbine_sim_score, turbine_score_mean, turbine_score_std \
             = compute_score(system_fi, simulation_results, score_type=score_type)
 
-        score_fig = plot_score(system_fi, turbine_sim_score, turbine_score_mean, turbine_score_std, score_type)
+        score_fig = plot_score(system_fi, turbine_sim_score)
         score_fig.show()
         score_fig.savefig(os.path.join(FIG_DIR, f'score.png'))
 
@@ -651,11 +678,12 @@ if __name__ == '__main__':
                                      np.arange(0, TMAX, GP_DT))
         std_fig.show()
         plt.savefig(os.path.join(FIG_DIR, f'std_evolution.png'))
-
-        k_train_fig = plot_k_train_evolution(system_fi.downstream_turbine_indices, ds_indices, simulation_results,
-                                             sim_indices, np.arange(0, TMAX, GP_DT))
-        k_train_fig.show()
-        plt.savefig(os.path.join(FIG_DIR, f'k_train_evolution.png'))
+        
+        # TODO some entries of k_train only don't contain lists for each gp, others are empty in between full ones
+        # k_train_fig = plot_k_train_evolution(system_fi.downstream_turbine_indices, ds_indices, simulation_results,
+        #                                      sim_indices, np.arange(0, TMAX, GP_DT))
+        # k_train_fig.show()
+        # plt.savefig(os.path.join(FIG_DIR, f'k_train_evolution.png'))
 
         error_ts_fig = plot_error_ts(system_fi, simulation_results, sim_indices)
         error_ts_fig.show()
