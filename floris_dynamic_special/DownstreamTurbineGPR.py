@@ -32,7 +32,7 @@ GP_CONSTANTS = {'PROPORTION_TRAINING_DATA': 0.8,
 
 N_TEST_POINTS_PER_COORD = 3
 AX_IND_FACTOR_TEST_POINTS = np.linspace(0.1, 0.3, N_TEST_POINTS_PER_COORD)
-YAW_ANGLE_TEST_POINTS = np.linspace(-15, 15, N_TEST_POINTS_PER_COORD)
+YAW_ANGLE_TEST_POINTS = np.linspace(--15, 15, N_TEST_POINTS_PER_COORD)
 UPSTREAM_WIND_SPEED_TEST_POINTS = np.linspace(8, 12, N_TEST_POINTS_PER_COORD)
 UPSTREAM_WIND_DIR_TEST_POINTS = np.linspace(250, 270, N_TEST_POINTS_PER_COORD)
 
@@ -66,9 +66,10 @@ class DownstreamTurbineGPR:
         self.model_type = model_type
         self.X_test = None
 
-    def compute_test_std(self):
+    def compute_test_var(self):
         _, test_std = self.gpr.predict(self.X_test, return_std=True)
-        return np.sum(test_std)
+        test_var = np.sum(test_std**2)
+        return test_var
 
     def compute_effective_dk(self, system_fi, current_measurement_rows, k_delay=GP_CONSTANTS['K_DELAY'],
                              dt=GP_CONSTANTS['DT']):
@@ -111,57 +112,59 @@ class DownstreamTurbineGPR:
 
         return k_to_add, effective_dk, effective_dk_to_add, history_exists
 
-    def find_unique_data(self, measurements_df, effective_dk, k_delay=GP_CONSTANTS['K_DELAY'], y_modeled=None):
+    def find_unique_data(self, measurements_df, k_train_potential, effective_dk, k_delay=GP_CONSTANTS['K_DELAY'], y_modeled=None):
         # of all the potential new data points, filter out the unique ones
         X_train_potential = np.vstack([generate_input_vector(
             measurements_df, k, self.upstream_turbine_indices, effective_dk.loc[k], k_delay)[1]
-                                       for k in self.k_train_potential])
+                                       for k in k_train_potential])
+        
+        X_train_potential = self.X_scaler.transform(X_train_potential)
         y_train_potential = (
-            measurements_df.loc[self.k_train_potential, f'TurbineWindSpeeds_{self.turbine_index}'].to_numpy() -
+            measurements_df.loc[k_train_potential, f'TurbineWindSpeeds_{self.turbine_index}'].to_numpy() -
             y_modeled).reshape(-1, self.n_outputs)
         
         
         _, unq_idx = np.unique(np.hstack([X_train_potential, y_train_potential]), axis=0,
                                return_index=True)
-        unq_idx = X_train_potential.shape[0] - unq_idx - 1
         X_train_potential = X_train_potential[unq_idx, :]
         y_train_potential = y_train_potential[unq_idx, :]
+        k_train_potential = [k_train_potential[i] for i in unq_idx]
         
-        self.k_train_potential = [self.k_train_potential[i] for i in unq_idx]
-
         # filter out data points that are already contained in replay buffer or training data
         keep_idx = []
         for idx, (X, y, k) in enumerate(zip(X_train_potential,
                                             y_train_potential,
-                                            self.k_train_potential)):
+                                            k_train_potential)):
             
             # if this data point matches with any in replay buffer, don't keep
             y_replay_close = np.isclose(self.y_train_replay, y)
             if np.any(y_replay_close) and \
-                np.any(np.all(np.isclose(X, self.X_train_replay[np.where(y_replay_close.squeeze())[0], :]), 1)):
+                np.any(np.all(np.isclose(X, self.X_train_replay[np.where(y_replay_close.squeeze())[0], :]), 1), 0):
                 continue
             
             # if this data point matches with any in training dataset, don't keep
             y_train_close = np.isclose(self.y_train, y)
             if np.any(y_train_close) and \
-                np.any(np.all(np.isclose(X, self.X_train[np.where(y_train_close.squeeze())[0], :]), 1)):
+                np.any(np.all(np.isclose(X, self.X_train[np.where(y_train_close.squeeze())[0], :]), 1), 0):
                 continue
             
+            assert not k in self.k_train # breaking here because Xy_train_potential neq Xy_train where k_train_potential == k_train
+            # check in choose new data points, that all Xyk are neq
             keep_idx.append(idx)
 
-        self.X_train_potential = X_train_potential[keep_idx, :]
-        self.y_train_potential = y_train_potential[keep_idx, :]
-        self.k_train_potential = [self.k_train_potential[i] for i in keep_idx]
-        
+        X_train_potential = X_train_potential[keep_idx, :]
+        y_train_potential = y_train_potential[keep_idx, :]
+        k_train_potential = [k_train_potential[i] for i in keep_idx]
+
+        assert len(set(k_train_potential).intersection(self.k_train)) == 0
 
         # if self.X_scaler is None:
         #     self.X_scaler = StandardScaler().fit(self.X_train_potential)
         #     self.y_scaler = StandardScaler().fit(self.y_train_potential)
-
-        if self.X_train_potential.shape[0]:
-            self.X_train_potential = self.X_scaler.transform(self.X_train_potential)
             # self.y_train_potential = self.y_scaler.transform(self.y_train_potential)
-    
+        
+        return X_train_potential, y_train_potential, k_train_potential
+        
     def add_data(self, new_X_train, new_y_train, new_k_train, is_online):
         
         self.X_train = np.vstack([self.X_train, new_X_train])
@@ -194,22 +197,22 @@ class DownstreamTurbineGPR:
         time_step_data = measurements_df.iloc[-1]
         k = int(time_step_data['Time'] // dt) # measurements_df.index[-1]
         
-        # upstream_yaw_angles = [time_step_data[f'YawAngles_{t}'] for t in self.upstream_turbine_indices]
-        # upstream_ax_ind_factors = [time_step_data[f'AxIndFactors_{t}'] for t in self.upstream_turbine_indices]
-
         effective_dk = self.compute_effective_dk(system_fi, time_step_data, k_delay=k_delay, dt=dt)
         if k >= (k_delay * effective_dk):
             
             X_ip = generate_input_vector(
                     measurements_df, k, self.upstream_turbine_indices, effective_dk, k_delay)[1]
-            X_ip = self.X_scaler.transform([X_ip])
+            X_ip = self.X_scaler.transform(np.atleast_2d(X_ip))
             y_pred, y_std = self.gpr.predict(X_ip, return_std=True)
-
+            y_pred = y_pred.squeeze()
+            y_std = y_std.squeeze()
+            
             return y_pred, y_std
         else:
             return np.nan, np.nan
 
-    def choose_new_data(self, n_datapoints=GP_CONSTANTS['BATCH_SIZE']):
+    def choose_new_data(self, X_train_potential, y_train_potential, k_train_potential,
+                        n_datapoints=GP_CONSTANTS['BATCH_SIZE']):
         """
 
         Args:
@@ -234,15 +237,21 @@ class DownstreamTurbineGPR:
         for _ in range(n_datapoints):
             if len(keep_idx):
                 drop_idx.append(keep_idx.pop())
+            else:
+                break
 
+        assert len(set(k_train_potential).intersection(self.k_train)) == 0
+        
         dropped_X_train = self.X_train[drop_idx, :]
         dropped_y_train = self.y_train[drop_idx, :]
         dropped_k_train = [self.k_train[i] for i in drop_idx]
         
-        self.X_train_replay = np.vstack([self.X_train_replay, self.X_train_potential, dropped_X_train])
-        self.y_train_replay = np.vstack([self.y_train_replay, self.y_train_potential, dropped_y_train])
-        self.k_train_replay = self.k_train_replay + self.k_train_potential + dropped_k_train
-
+        # TODO there are duplicate vals in k_train_potential and dropped_k_train that don't have matching y vals??
+        self.X_train_replay = np.vstack([self.X_train_replay, X_train_potential, dropped_X_train])
+        self.y_train_replay = np.vstack([self.y_train_replay, y_train_potential, dropped_y_train])
+        self.k_train_replay = self.k_train_replay + k_train_potential + dropped_k_train
+        assert len(set(k_train_potential).intersection(dropped_k_train)) == 0
+        
         # retrain gp with reduced training dataset
         self.X_train = self.X_train[keep_idx, :]
         self.y_train = self.y_train[keep_idx, :]

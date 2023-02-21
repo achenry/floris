@@ -22,9 +22,9 @@ import matplotlib as mpl
 from preprocessing import add_gaussian_noise
 import multiprocessing as mp
 from multiprocessing import Pool
-from postprocessing import plot_score, plot_std_evolution, plot_ts, plot_error_ts, plot_k_train_evolution, compute_score, plot_wind_farm
-import matplotlib.animation as animation
-from matplotlib.animation import FuncAnimation, FFMpegWriter
+from postprocessing import plot_score, plot_std_evolution, plot_ts, plot_error_ts, plot_k_train_evolution, compute_scores, plot_wind_farm
+# import matplotlib.animation as animation
+# from matplotlib.animation import FuncAnimation, FFMpegWriter
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel, Matern
 import sys
 import argparse
@@ -311,7 +311,7 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
     y_train_frames = []
     k_train_frames = [[[] for gp in range(len(gprs))] for i in range(kmax_gp)]
     training_size = [[0 for gp in range(len(gprs))] for i in range(kmax_gp)]
-    test_std = np.nan * np.ones((kmax_gp, len(gprs)))
+    test_var = np.nan * np.ones((kmax_gp, len(gprs)))
     # test_rmse = np.nan * np.ones((kmax_gp, len(gprs)))
 
     # initialize system simulator and model simulator to steady-state
@@ -424,7 +424,7 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                                                      dt=GP_CONSTANTS['DT'])
                     
                     # gp.k_potential is list of new data points with sufficient history
-                    gprs[gp_idx].k_train_potential = k_to_add.loc[k_to_add > k_checkpoint].to_list()
+                    k_train_potential = k_to_add.loc[k_to_add > k_checkpoint].to_list()
 
                     # drop time-steps in online_measurements_df for which < effective_dk * k_delay
                     # compute the first k step required for the autoregressive inputs
@@ -440,32 +440,36 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                     # Xyk_potential are new data points which have not been added to the replay buffer or training data yet and don't include any duplicates
                     # Xyk_train_replay are data points potential new data points and data points which have been dropped from training data. It is capped to a maximum size.
                     
-                    if len(gprs[gp_idx].k_train_potential) < batch_size:
+                    if len(k_train_potential) < batch_size:
                         for k_tr in gprs[gp_idx].k_train:
                             k_train_frames[k_gp][gp_idx].append(k_tr)
                         training_size[k_gp][gp_idx] = len(gprs[gp_idx].k_train)
+                        test_var[k_gp, gp_idx] = gprs[gp_idx].compute_test_var()
                         continue
 
                     
                     # remove from gp.k_potential duplicate data points within Xy_potential and Xy_replay
-                    gprs[gp_idx].find_unique_data(online_measurements_df,
-                                                    effective_dk.loc[gprs[gp_idx].k_train_potential],
-                                                    y_modeled=[y_modeled[k][gp_idx] for k in gprs[gp_idx].k_train_potential],
+                    X_train_potential, y_train_potential, k_train_potential = \
+                        gprs[gp_idx].find_unique_data(online_measurements_df, k_train_potential,
+                                                    effective_dk,
+                                                    y_modeled=[y_modeled[k][gp_idx] for k in k_train_potential],
                                                     k_delay=k_delay)
                     
-                    if len(gprs[gp_idx].k_train_potential) < batch_size:
+                    if len(k_train_potential) < batch_size:
                         print(
                             f'Not enough history available to fit {gp_idx} th GP with batch of samples, adding to buffer instead')
                         for k_tr in gprs[gp_idx].k_train:
                             k_train_frames[k_gp][gp_idx].append(k_tr)
                         training_size[k_gp][gp_idx] = len(gprs[gp_idx].k_train)
+                        test_var[k_gp, gp_idx] = gprs[gp_idx].compute_test_var()
                         continue
                     
-                    print(f'Enough history available to fit {gp_idx} th GP with {len(gprs[gp_idx].k_train_potential)} new samples '
-                          f'between k = {gprs[gp_idx].k_train_potential[0]} and {gprs[gp_idx].k_train_potential[-1]}')
+                    print(f'Enough history available to fit {gp_idx} th GP with {len(k_train_potential)} new samples '
+                          f'between k = {k_train_potential[0]} and {k_train_potential[-1]}')
 
                     k_checkpoint = k_gp
-                    gprs[gp_idx].choose_new_data(n_datapoints=batch_size)
+                    gprs[gp_idx].choose_new_data(X_train_potential, y_train_potential, k_train_potential,
+                                                 n_datapoints=batch_size)
                     
                     # add this GPs data points identifiers for this time-step
                     for k_tr in gprs[gp_idx].k_train:
@@ -475,7 +479,7 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                     # refit gp
                     if FIT_ONLINE:
                         gprs[gp_idx].fit()
-                        test_std[k_gp, gp_idx] = gprs[gp_idx].compute_test_std()
+                        test_var[k_gp, gp_idx] = gprs[gp_idx].compute_test_var()
                         # test_score[k_gp, gp_idx] = gprs[gp_idx].compute_test_rmse()
 
                 # min_k_needed = max(min(min_k_needed), 0)
@@ -489,11 +493,10 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                 # predict effective wind speed
                 y_pred_k, y_std_k = gprs[gp_idx].predict(online_measurements_df, system_fi=system_fi,
                                                          k_delay=k_delay, y_modeled=y_modeled_k)
-                
-                    
+               
                 y_pred[k_gp].append(y_pred_k)
                 y_std[k_gp].append(y_std_k)
-
+                
                 y_meas_k = current_measurements[f'TurbineWindSpeeds_{ds_idx}'][0]
                 y_meas[k_gp].append(y_meas_k)
 
@@ -502,20 +505,20 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
     y_pred = np.vstack(y_pred)
     y_std = np.vstack(y_std)
     y_meas = np.vstack(y_meas)
-    test_std = np.vstack(test_std)
+    test_var = np.vstack(test_var)
     training_size = np.vstack(training_size)
 
     results = {'true': y_true, 'modeled': y_modeled, 'pred': y_pred, 'std': y_std, 'meas': y_meas,
-               'test_std': test_std,
+               'test_var': test_var,
                'k_train': k_train_frames, 'max_training_size': max_training_size, 'training_size': training_size}
     
     filename = f'simulation_data_{dataset_type}_case-{case_idx}_df-{simulation_idx}'
     with open(os.path.join(SIM_SAVE_DIR, filename), 'wb') as fp:
         pickle.dump(results, fp)
 
-    training_fig, training_ax = plt.subplots(facecolor = plt.cm.Greys(0.2),
-                      dpi = 150,
-                      tight_layout=True)
+    # training_fig, training_ax = plt.subplots(facecolor = plt.cm.Greys(0.2),
+    #                   dpi = 150,
+    #                   tight_layout=True)
     
     # training_max_count = max(max(tup[1] for tup in arr[gp_idx]) if len(arr[gp_idx]) else -1 for gp_idx in range(len(gprs)) for arr in y_train_frames if len(arr))
     # training_y_vals = [[[tup[0] for tup in arr[gp_idx]] if len(arr[gp_idx]) else None for gp_idx in range(len(gprs))] if len(arr) else None for arr in y_train_frames]
@@ -664,61 +667,83 @@ if __name__ == '__main__':
     if GENERATE_PLOTS:
         system_fi = get_system_info(FLORIS_DIR)
         ## FETCH SIMULATION RESULTS
-        simulation_results = defaultdict(list)
+        simulation_results = []
         for root, dir, filenames in os.walk(SIM_SAVE_DIR):
             for filename in sorted(filenames):
                 if 'simulation_data' in filename:
-                    if 'train' in filename:
-                        with open(os.path.join(SIM_SAVE_DIR, filename), 'rb') as fp:
-                            simulation_results['train'].append(pickle.load(fp))
-                    elif 'test' in filename:
-                        with open(os.path.join(SIM_SAVE_DIR, filename), 'rb') as fp:
-                            simulation_results['test'].append(pickle.load(fp))
+                    case_idx = int(filename[filename.index('case') + len('case') + 1])
+                    sim_idx = int(filename[filename.index('df') + len('df') + 1])
+                    with open(os.path.join(SIM_SAVE_DIR, filename), 'rb') as fp:
+                        simulation_results.append((case_idx, sim_idx, pickle.load(fp)))
 
         ## PLOT RESULTS
         # plot the true vs predicted gp values over the course of the simulation
 
         
-        score_type = 'r2'
+        score_type = 'rmse'
         # turbine_sim_score is n_downstream_turbines X n_simulations matrix of scores
-        sim_score, turbine_sim_score, turbine_score_mean, turbine_score_std \
-            = compute_score(system_fi, simulation_results, score_type=score_type)
-
-        score_fig = plot_score(system_fi, turbine_sim_score)
+        scores_df = compute_scores(system_fi, simulation_results, score_type=score_type)
+        
+        for case_idx, case in enumerate(cases):
+            if case is None:
+                continue
+            print(f'\nCase {case_idx}')
+            print(f'N_tr = {case["max_training_size"]}')
+            print(f'kernel = {case["kernel"]}')
+            print(f'noise_std = {case["noise_std"]}')
+            print(f'k_delay = {case["k_delay"]}')
+            print(f'batch_size = {case["batch_size"]}')
+            case_scores = scores_df.loc[scores_df["Case"] == case_idx][score_type]
+            print(f'{score_type} Mean, Median over all Simulations for averaged over Turbines '
+                  f'= \n{case_scores.mean(), case_scores.median()}')
+            print(f'{score_type} Std. Dev. over all Simulations averaged over Turbines '
+                  f'= \n{case_scores.std()}')
+         
+        scores_by_case_df = scores_df.groupby('Case')[score_type].mean().sort_values(ascending=True)
+        n_ts_plots = 2
+        if score_type == 'r2':  # best score is greatest
+            best_case_idx = scores_by_case_df.index[-1]
+            best_case_scores_df = scores_df.loc[scores_df['Case'] == best_case_idx]
+            scores_case_df = best_case_scores_df.groupby('Simulation')[score_type].mean().sort_values(ascending=True)
+            best_sim_indices = scores_case_df.index[-n_ts_plots:]
+        elif score_type == 'rmse':  # best score is least
+            best_case_idx = scores_by_case_df.index[0]
+            best_case_scores_df = scores_df.loc[scores_df['Case'] == best_case_idx]
+            scores_case_df = best_case_scores_df.groupby('Simulation')[score_type].mean().sort_values(ascending=True)
+            best_sim_indices = scores_case_df.index[:n_ts_plots]
+        
+        score_fig = plot_score(system_fi, best_case_scores_df, score_type=score_type)
         score_fig.show()
         score_fig.savefig(os.path.join(FIG_DIR, f'score.png'))
-
+        
         if len(system_fi.floris.farm.turbines) == 9:
             ds_indices = [4, 7]
         else:
             # for 2 turbine farm
             ds_indices = [1]
-
-        # choose training and test datasets with lowest mean rmse over all turbines
-        n_ts_plots = 2
-        if score_type == 'r2': # best score is greatest
-            sim_indices = {'train': np.argsort(sim_score['train'])[-n_ts_plots:]}
-        elif score_type == 'rmse': # best score is least
-            sim_indices = {'train': np.argsort(sim_score['train'])[:n_ts_plots]}
-
-        ts_fig = plot_ts(system_fi.downstream_turbine_indices, ds_indices, simulation_results, sim_indices, np.arange(0, TMAX, GP_DT))
+        
+        time_ts = np.arange(0, TMAX, GP_DT)
+        best_case_simulation_results = [(sim_res[1], sim_res[2]) for sim_res in simulation_results
+                                        if sim_res[0] == best_case_idx and sim_res[1] in best_sim_indices]
+        ts_fig = plot_ts(system_fi.downstream_turbine_indices, ds_indices,
+                         best_case_simulation_results, time_ts)
         ts_fig.show()
         ts_fig.savefig(os.path.join(FIG_DIR, f'time_series.png'))
         
-        # TODO check why test_std is so high
-        std_fig = plot_std_evolution(system_fi.downstream_turbine_indices, ds_indices, simulation_results, sim_indices,
-                                     np.arange(0, TMAX, GP_DT))
+        std_fig = plot_std_evolution(system_fi.downstream_turbine_indices, ds_indices,
+                                     best_case_simulation_results, time_ts)
         std_fig.show()
-        plt.savefig(os.path.join(FIG_DIR, f'std_evolution.png'))
+        std_fig.savefig(os.path.join(FIG_DIR, f'std_evolution.png'))
         
-        k_train_fig = plot_k_train_evolution(system_fi.downstream_turbine_indices, ds_indices, simulation_results,
-                                             sim_indices, np.arange(0, TMAX, GP_DT))
+        k_train_fig = plot_k_train_evolution(system_fi.downstream_turbine_indices, ds_indices,
+                                             best_case_simulation_results, time_ts)
         k_train_fig.show()
-        plt.savefig(os.path.join(FIG_DIR, f'k_train_evolution.png'))
+        k_train_fig.savefig(os.path.join(FIG_DIR, f'k_train_evolution.png'))
 
-        error_ts_fig = plot_error_ts(system_fi.downstream_turbine_indices, ds_indices, simulation_results, sim_indices, np.arange(0, TMAX, GP_DT))
+        error_ts_fig = plot_error_ts(system_fi.downstream_turbine_indices, ds_indices,
+                                     best_case_simulation_results, time_ts)
         error_ts_fig.show()
-        plt.savefig(os.path.join(FIG_DIR, f'error_ts.png'))
+        error_ts_fig.savefig(os.path.join(FIG_DIR, f'error_ts.png'))
         
         farm_fig = plot_wind_farm(system_fi)
         farm_fig.show()
