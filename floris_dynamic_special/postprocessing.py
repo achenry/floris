@@ -192,6 +192,7 @@ def plot_score(system_fi, scores_df, score_type='rmse'):
     # )
 
     score_ax.set(xlabel='Turbine', xticklabels=[f'T{t}' for t in system_fi.downstream_turbine_indices])
+    score_ax.set_ylabel(f'RMSE\n[m/s]', rotation=0, ha='right', labelpad=15, y=0.8)
     return score_fig
 
 

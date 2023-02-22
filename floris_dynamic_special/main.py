@@ -286,7 +286,11 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
 
     # Reset base wind farm model i.e. assumed wake model, where GP learns error between measurements and model
     model_fi = get_base_model(BASE_MODEL_FLORIS_DIR)
-
+    
+    # reset Xyk_train
+    for gp in gprs:
+        gp.reset_matrices()
+    
     print('Defining wind, yaw, ax ind factor disturbances')
 
     disturbances = {
@@ -621,15 +625,6 @@ if __name__ == '__main__':
                                             GP_CONSTANTS['N_TEST_POINTS'], TRAIN_OFFLINE, SCALARS_DIR if not GENERATE_SCALARS else None))
             else:
                 case_gprs.append(None)
-        
-    if GENERATE_SCALARS:
-        for case_idx, case in enumerate(case_gprs):
-            if case is not None:
-                for gp_idx, gp in enumerate(case):
-                    with open(os.path.join(SCALARS_DIR, f'X_scaler_case{case_idx}_gp{gp_idx}'), 'wb') as fp:
-                        pickle.dump(gp.X_scaler, fp)
-                    with open(os.path.join(SCALARS_DIR, f'y_scaler_case{case_idx}_gp{gp_idx}'), 'wb') as fp:
-                        pickle.dump(gp.y_scaler, fp)
 
     # start simulation
     GP_DT = GP_CONSTANTS['DT']
@@ -699,17 +694,17 @@ if __name__ == '__main__':
             print(f'{score_type} Std. Dev. over all Simulations averaged over Turbines '
                   f'= \n{case_scores.std()}')
          
-        scores_by_case_df = scores_df.groupby('Case')[score_type].mean().sort_values(ascending=True)
+        scores_by_case_df = scores_df.groupby('Case')[score_type].median().sort_values(ascending=True)
         n_ts_plots = 2
         if score_type == 'r2':  # best score is greatest
             best_case_idx = scores_by_case_df.index[-1]
             best_case_scores_df = scores_df.loc[scores_df['Case'] == best_case_idx]
-            scores_case_df = best_case_scores_df.groupby('Simulation')[score_type].mean().sort_values(ascending=True)
+            scores_case_df = best_case_scores_df.groupby('Simulation')[score_type].median().sort_values(ascending=True)
             best_sim_indices = scores_case_df.index[-n_ts_plots:]
         elif score_type == 'rmse':  # best score is least
             best_case_idx = scores_by_case_df.index[0]
             best_case_scores_df = scores_df.loc[scores_df['Case'] == best_case_idx]
-            scores_case_df = best_case_scores_df.groupby('Simulation')[score_type].mean().sort_values(ascending=True)
+            scores_case_df = best_case_scores_df.groupby('Simulation')[score_type].median().sort_values(ascending=True)
             best_sim_indices = scores_case_df.index[:n_ts_plots]
         
         score_fig = plot_score(system_fi, best_case_scores_df, score_type=score_type)

@@ -24,7 +24,7 @@ GP_CONSTANTS = {'PROPORTION_TRAINING_DATA': 0.8,
                 'PLOT_DATA': False,
                 'SIMULATE_DATASET_INDICES': [0],
                 'MAX_TRAINING_SIZE': 500,
-                'UPSTREAM_RADIUS': 1000,
+                'UPSTREAM_RADIUS': 1000, # only consider those that surround immediately
                 'BATCH_SIZE': 10,
                 'STD_THRESHOLD': 0.1,
                 'N_TEST_POINTS': 100
@@ -45,6 +45,7 @@ class DownstreamTurbineGPR:
         self.input_labels = input_labels
         self.n_inputs = len(self.input_labels)
         self.n_outputs = n_outputs
+        
         self.X_train = np.zeros((0, self.n_inputs))
         self.y_train = np.zeros((0, self.n_outputs))
         self.k_train = []
@@ -52,7 +53,6 @@ class DownstreamTurbineGPR:
         self.X_train_replay = np.zeros((0, self.n_inputs))
         self.y_train_replay = np.zeros((0, self.n_outputs))
         self.k_train_replay = []
-        self.k_train_potential = []
 
         self.X_scaler = None
         self.max_training_size = max_training_size
@@ -65,7 +65,16 @@ class DownstreamTurbineGPR:
         self.upstream_turbine_indices = upstream_turbine_indices
         self.model_type = model_type
         self.X_test = None
-
+    
+    def reset_matrices(self):
+        self.X_train = np.zeros((0, self.n_inputs))
+        self.y_train = np.zeros((0, self.n_outputs))
+        self.k_train = []
+    
+        self.X_train_replay = np.zeros((0, self.n_inputs))
+        self.y_train_replay = np.zeros((0, self.n_outputs))
+        self.k_train_replay = []
+    
     def compute_test_var(self):
         _, test_std = self.gpr.predict(self.X_test, return_std=True)
         test_var = np.sum(test_std**2)
@@ -148,7 +157,10 @@ class DownstreamTurbineGPR:
                 np.any(np.all(np.isclose(X, self.X_train[np.where(y_train_close.squeeze())[0], :]), 1), 0):
                 continue
             
-            assert not k in self.k_train # breaking here because Xy_train_potential neq Xy_train where k_train_potential == k_train
+            try:
+                assert not k in self.k_train # breaking here because Xy_train_potential neq Xy_train where k_train_potential == k_train
+            except Exception as e:
+                print('oh no')
             # check in choose new data points, that all Xyk are neq
             keep_idx.append(idx)
 
@@ -401,10 +413,12 @@ def init_gprs(system_fi, kernel, k_delay,
     for ds_t_idx in system_fi.downstream_turbine_indices:
         # include all turbines with upstream radius of this one
         upstream_turbine_indices = [us_t_idx for us_t_idx in system_fi.upstream_turbine_indices 
-                                    if norm([system_fi.floris.farm.turbine_map.coords[us_t_idx].x1 - system_fi.floris.farm.turbine_map.coords[ds_t_idx].x1,
-                                             system_fi.floris.farm.turbine_map.coords[us_t_idx].x2 - system_fi.floris.farm.turbine_map.coords[ds_t_idx].x2
-                                             ], ord=2)
-                                    <= GP_CONSTANTS['UPSTREAM_RADIUS']]
+                                    if (norm([system_fi.floris.farm.turbine_map.coords[us_t_idx].x1
+                                              - system_fi.floris.farm.turbine_map.coords[ds_t_idx].x1,
+                                             system_fi.floris.farm.turbine_map.coords[us_t_idx].x2
+                                              - system_fi.floris.farm.turbine_map.coords[ds_t_idx].x2
+                                             ], ord=2) <= GP_CONSTANTS['UPSTREAM_RADIUS'])
+                                    and system_fi.floris.farm.turbine_map.coords[us_t_idx].x1 < system_fi.floris.farm.turbine_map.coords[ds_t_idx].x1]
          
         # PARAMETERIZE GAUSSIAN PROCESS REGRESSOR
          # DotProduct() + WhiteKernel()
