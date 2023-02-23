@@ -12,7 +12,8 @@ import numpy as np
 from DownstreamTurbineGPR import GP_CONSTANTS, get_system_info, init_gprs, \
     get_base_model, get_dfs, \
     N_TEST_POINTS_PER_COORD, \
-    AX_IND_FACTOR_TEST_POINTS, YAW_ANGLE_TEST_POINTS, UPSTREAM_WIND_DIR_TEST_POINTS, UPSTREAM_WIND_SPEED_TEST_POINTS
+    AX_IND_FACTOR_INC, YAW_ANGLE_INC, WIND_SPEED_INC, WIND_DIR_INC, \
+    AX_IND_FACTOR_RANGE, YAW_ANGLE_RANGE, WIND_SPEED_RANGE, WIND_DIR_RANGE
 import pandas as pd
 from collections import defaultdict
 import pickle
@@ -22,7 +23,7 @@ import matplotlib as mpl
 from preprocessing import add_gaussian_noise
 import multiprocessing as mp
 from multiprocessing import Pool
-from postprocessing import plot_score, plot_std_evolution, plot_ts, plot_error_ts, plot_k_train_evolution, compute_scores, plot_wind_farm
+from postprocessing import plot_score, plot_std_evolution, plot_ts, plot_error_ts, plot_k_train_evolution, compute_scores, plot_wind_farm, generate_scores_table
 # import matplotlib.animation as animation
 # from matplotlib.animation import FuncAnimation, FFMpegWriter
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel, Matern
@@ -98,7 +99,7 @@ BATCH_SIZE_VALS = [1, 2, 4]
 default_kernel = lambda: ConstantKernel(constant_value_bounds=(1e-12, 1e12)) * RBF(length_scale_bounds=(1e-12, 1e12))
 default_kernel_idx = 0
 default_max_training_size = 10
-default_batch_size = 2
+default_batch_size = 1
 default_noise_std = 0.01
 default_k_delay = 4
 
@@ -198,17 +199,17 @@ def initialize(case_idx, full_offline_measurements_df, system_fi, k_delay, noise
 
         for l_idx, l in enumerate(gp.input_labels):
             if 'AxIndFactors' in l:
-                X_range[0].append(min(AX_IND_FACTOR_TEST_POINTS))
-                X_range[1].append(max(AX_IND_FACTOR_TEST_POINTS))
+                X_range[0].append(AX_IND_FACTOR_RANGE[0])
+                X_range[1].append(AX_IND_FACTOR_RANGE[1])
             elif 'YawAngles' in l:
-                X_range[0].append(min(YAW_ANGLE_TEST_POINTS))
-                X_range[1].append(max(YAW_ANGLE_TEST_POINTS))
+                X_range[0].append(YAW_ANGLE_RANGE[0])
+                X_range[1].append(YAW_ANGLE_RANGE[1])
             elif 'TurbineWindSpeeds' in l:
-                X_range[0].append(min(UPSTREAM_WIND_SPEED_TEST_POINTS))
-                X_range[1].append(max(UPSTREAM_WIND_SPEED_TEST_POINTS))
+                X_range[0].append(WIND_SPEED_RANGE[0])
+                X_range[1].append(WIND_SPEED_RANGE[1])
             elif 'FreestreamWindDir' in l:
-                X_range[0].append(min(UPSTREAM_WIND_DIR_TEST_POINTS))
-                X_range[1].append(max(UPSTREAM_WIND_DIR_TEST_POINTS))
+                X_range[0].append(WIND_DIR_RANGE[0])
+                X_range[1].append(WIND_DIR_RANGE[1])
          
         gp.X_scaler.fit(X_range)
         
@@ -258,21 +259,39 @@ def initialize(case_idx, full_offline_measurements_df, system_fi, k_delay, noise
         #     gp.y_scaler.var_ = np.ones((gp.n_outputs, ))
         #     gp.y_scaler.scale_ = np.ones((gp.n_outputs, ))
         
-        X_test_indices = np.random.randint([N_TEST_POINTS_PER_COORD for l in gp.input_labels],
-                                           size=(n_test_points, len(gp.input_labels)))
-
-        X_test = []
-        for l_idx, l in enumerate(gp.input_labels):
-            if 'AxIndFactors' in l:
-                X_test.append(AX_IND_FACTOR_TEST_POINTS[X_test_indices[:, l_idx]])
-            elif 'YawAngles' in l:
-                X_test.append(YAW_ANGLE_TEST_POINTS[X_test_indices[:, l_idx]])
-            elif 'TurbineWindSpeeds' in l:
-                X_test.append(UPSTREAM_WIND_SPEED_TEST_POINTS[X_test_indices[:, l_idx]])
-            elif 'FreestreamWindDir' in l:
-                X_test.append(UPSTREAM_WIND_DIR_TEST_POINTS[X_test_indices[:, l_idx]])
-
-        gp.X_test = gp.X_scaler.transform(np.transpose(X_test))
+        # TODO change this to be points in neighbourhod of current state
+        
+        # X_test_indices = np.random.randint([N_TEST_POINTS_PER_COORD for l in gp.input_labels],
+        #                                    size=(n_test_points, len(gp.input_labels)))
+        #
+        # X_test = []
+        # for l_idx, l in enumerate(gp.input_labels):
+        #     if 'AxIndFactors' in l:
+        #         # X_test.append(AX_IND_FACTOR_TEST_POINTS[X_test_indices[:, l_idx]])
+        #         test_points = np.linspace(X_current[:, l_idx] - AX_IND_FACTOR_INC,
+        #                                   X_current[:, l_idx] + AX_IND_FACTOR_INC,
+        #                                   N_TEST_POINTS_PER_COORD)
+        #         X_test.append(test_points[X_test_indices[:, l_idx]])
+        #     elif 'YawAngles' in l:
+        #         # X_test.append(YAW_ANGLE_TEST_POINTS[X_test_indices[:, l_idx]])
+        #         test_points = np.linspace(X_current[:, l_idx] - YAW_ANGLE_INC,
+        #                                   X_current[:, l_idx] + YAW_ANGLE_INC,
+        #                                   N_TEST_POINTS_PER_COORD)
+        #         X_test.append(test_points[X_test_indices[:, l_idx]])
+        #     elif 'TurbineWindSpeeds' in l:
+        #         # X_test.append(UPSTREAM_WIND_SPEED_TEST_POINTS[X_test_indices[:, l_idx]])
+        #         test_points = np.linspace(X_current[:, l_idx] - TURBINE_WIND_SPEED_INC,
+        #                                   X_current[:, l_idx] + TURBINE_WIND_SPEED_INC,
+        #                                   N_TEST_POINTS_PER_COORD)
+        #         X_test.append(test_points[X_test_indices[:, l_idx]])
+        #     elif 'FreestreamWindDir' in l:
+        #         # X_test.append(UPSTREAM_WIND_DIR_TEST_POINTS[X_test_indices[:, l_idx]])
+        #         test_points = np.linspace(X_current[:, l_idx] - FREESTREAM_WIND_DIR_INC,
+        #                                   X_current[:, l_idx] + FREESTREAM_WIND_DIR_INC,
+        #                                   N_TEST_POINTS_PER_COORD)
+        #         X_test.append(test_points[X_test_indices[:, l_idx]])
+        #
+        # gp.X_test = gp.X_scaler.transform(np.transpose(X_test))
 
     return gprs
 
@@ -448,17 +467,18 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                         for k_tr in gprs[gp_idx].k_train:
                             k_train_frames[k_gp][gp_idx].append(k_tr)
                         training_size[k_gp][gp_idx] = len(gprs[gp_idx].k_train)
-                        test_var[k_gp, gp_idx] = gprs[gp_idx].compute_test_var()
+                        if gprs[gp_idx].X_test is not None:
+                            test_var[k_gp, gp_idx] = gprs[gp_idx].compute_test_var()
                         continue
 
                     
                     # remove from gp.k_potential duplicate data points within Xy_potential and Xy_replay
-                    X_train_potential, y_train_potential, k_train_potential = \
+                    X_current, X_train_potential, y_train_potential, k_train_potential = \
                         gprs[gp_idx].find_unique_data(online_measurements_df, k_train_potential,
                                                     effective_dk,
                                                     y_modeled=[y_modeled[k][gp_idx] for k in k_train_potential],
                                                     k_delay=k_delay)
-                    
+                    gprs[gp_idx].generate_X_test(X_current)
                     if len(k_train_potential) < batch_size:
                         print(
                             f'Not enough history available to fit {gp_idx} th GP with batch of samples, adding to buffer instead')
@@ -483,6 +503,7 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                     # refit gp
                     if FIT_ONLINE:
                         gprs[gp_idx].fit()
+                        
                         test_var[k_gp, gp_idx] = gprs[gp_idx].compute_test_var()
                         # test_score[k_gp, gp_idx] = gprs[gp_idx].compute_test_rmse()
 
@@ -677,7 +698,7 @@ if __name__ == '__main__':
         
         score_type = 'rmse'
         # turbine_sim_score is n_downstream_turbines X n_simulations matrix of scores
-        scores_df = compute_scores(system_fi, simulation_results, score_type=score_type)
+        scores_df = compute_scores(system_fi, cases, simulation_results, score_type=score_type)
         
         for case_idx, case in enumerate(cases):
             if case is None:
@@ -694,7 +715,15 @@ if __name__ == '__main__':
             print(f'{score_type} Std. Dev. over all Simulations averaged over Turbines '
                   f'= \n{case_scores.std()}')
          
-        scores_by_case_df = scores_df.groupby('Case')[score_type].median().sort_values(ascending=True)
+        scores_by_case_df = scores_df.groupby('Case')[score_type].median().sort_values(ascending=True).to_frame()
+        scores_by_case_df['max_training_size'] = [cases[case_idx]['max_training_size'] for case_idx in scores_by_case_df.index]
+        scores_by_case_df['kernel'] = [cases[case_idx]['kernel'] for case_idx in scores_by_case_df.index]
+        scores_by_case_df['noise_std'] = [cases[case_idx]['noise_std'] for case_idx in scores_by_case_df.index]
+        scores_by_case_df['k_delay'] = [cases[case_idx]['k_delay'] for case_idx in scores_by_case_df.index]
+        scores_by_case_df['batch_size'] = [cases[case_idx]['batch_size'] for case_idx in scores_by_case_df.index]
+        
+        generate_scores_table(scores_by_case_df)
+        
         n_ts_plots = 2
         if score_type == 'r2':  # best score is greatest
             best_case_idx = scores_by_case_df.index[-1]

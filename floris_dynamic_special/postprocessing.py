@@ -1,10 +1,11 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from _collections import defaultdict
-from DownstreamTurbineGPR import UPSTREAM_WIND_SPEED_TEST_POINTS
+from DownstreamTurbineGPR import WIND_SPEED_RANGE
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from floridyn.tools.visualization import plot_turbines_with_fi, visualize_cut_plane
 import pandas as pd
+import os
 
 def plot_prediction_vs_input(ax, gpr_fit, inputs, input_labels, X_norm, y_norm, X_scalar, y_scalar, learning_turbine_index, dataset_type):
             
@@ -235,8 +236,8 @@ def plot_ts(all_ds_indices, ds_indices, simulation_results, time):
             min_val = min(min_val, np.nanmin([ln.get_ydata() for ln in ts_ax[row_idx, col_idx].get_lines()]))
             max_val = max(max_val, np.nanmax([ln.get_ydata() for ln in ts_ax[row_idx, col_idx].get_lines()]))
     
-    min_val = max(min_val, -max(UPSTREAM_WIND_SPEED_TEST_POINTS) / 2)
-    max_val = min(max_val, max(UPSTREAM_WIND_SPEED_TEST_POINTS) / 2)
+    min_val = max(min_val, -WIND_SPEED_RANGE[1] / 2)
+    max_val = min(max_val, WIND_SPEED_RANGE[0] / 2)
    
     for row_idx, (sim_idx, sim_data) in enumerate(simulation_results):
         for col_idx, ds in enumerate(ds_indices):
@@ -310,7 +311,7 @@ def plot_k_train_evolution(all_ds_indices, ds_indices, simulation_results, time)
 
     return k_train_fig
 
-def compute_scores(system_fi, simulation_results, score_type):
+def compute_scores(system_fi, cases, simulation_results, score_type):
 
     case_vals = []
     sim_vals = []
@@ -334,9 +335,14 @@ def compute_scores(system_fi, simulation_results, score_type):
             sim_vals.append(sim_idx)
             turbine_vals.append(ds_idx)
             score_vals.append(score)
-            
+        
     scores = pd.DataFrame(data={
         'Case': case_vals,
+        'max_training_size': [cases[case_idx]['max_training_size'] for case_idx in case_vals],
+        'kernel': [cases[case_idx]['kernel'] for case_idx in case_vals],
+        'noise_std': [cases[case_idx]['noise_std'] for case_idx in case_vals],
+        'k_delay': [cases[case_idx]['k_delay'] for case_idx in case_vals],
+        'batch_size': [cases[case_idx]['batch_size'] for case_idx in case_vals],
         'Simulation': sim_vals,
         'Turbine': turbine_vals,
         f'{score_type}': score_vals
@@ -362,3 +368,74 @@ def plot_wind_farm(system_fi):
     farm_ax.set_ylabel('Cross-\nStream\nDistance\n[m]', rotation=0, ha='right', labelpad=15.0, y=0.8)
     
     return farm_fig
+
+def generate_scores_table(scores_df):
+    # \begin{tabular}{llllllll}
+    # Case & $N_\text
+    # {tr}$ & $K(\cdot, \cdot)$ & $\sigma_n$ & $k_\text
+    # {delay}$ & $q$ & $RMSE$ \ \
+    #     1 &$10$ & SE &$0.01$ & $4$ & $1$ & \ \
+    #     2 &$10$ & SE &$0.01$ & $4$ & $2$ & \ \
+    #     3 &$10$ & SE &$0.01$ & $4$ & $4$ & \ \
+    #     4 &$10$ & SE &$0.01$ & $2$ & $1$ & \ \
+    #     5 &$10$ & SE &$0.01$ & $8$ & $1$ & \ \
+    #     6 &$10$ & SE &$0.001$ & $4$ & $1$ & \ \
+    #     7 &$10$ & SE &$0.1$ & $4$ & $1$ & \ \
+    #     8 &$5$ & SE &$0.01$ & $4$ & $1$ & \ \
+    #     9 &$20$ & SE &$0.01$ & $4$ & $1$ & \ \
+    #     10 &$10$ & Mat\'ern&$0.01$&$4$&$1$&
+    # \end{tabular}
+    
+    captions = [
+    '$RMSE$ of the \\ac{GP}-Predicted vs. True Effective Velocities for Different Learning Parameters'
+    ]
+    
+    labels = [
+        'tab:scores'
+    ]
+    project_dir = '/Users/aoifework/Documents/Research/wake_modeling'
+    dest_results_dir = os.path.join(project_dir, 'tables')
+    if not os.path.exists(dest_results_dir):
+        os.mkdir(dest_results_dir)
+    
+    
+    for caption, label in zip(captions, labels):
+        
+        export_df = pd.DataFrame(scores_df)
+        for row_idx, row in enumerate(export_df['kernel']):
+            if 'RBF' in row.__str__():
+                scores_df['kernel'].iloc[row_idx] = r"SE"
+            elif 'Matern' in row.__str__():
+                scores_df['kernel'].iloc[row_idx] = r"Mat\'ern"
+        
+        # colour lowest rmse with lightest gray, highest with darkest gray
+        for row_idx, row in enumerate(export_df['rmse']):
+            scores_df['rmse'].iloc[row_idx] = r'\cellcolor{Gray' + f'{10 - row_idx}' + r'}' + format(scores_df["rmse"].iloc[row_idx], '.3f')
+        
+        # Rename features in Candidate Function column
+        rename_mapping = {
+            'max_training_size': r'$N_\text{tr}$',
+            'kernel': r'$K(\cdot, \cdot)$',
+            'noise_std': r'$\sigma_n$',
+            'k_delay': r'$k_\text{delay}$',
+            'batch_size': r'$q$',
+            'rmse': r'$RMSE$'
+        }
+        export_df = scores_df.rename(columns=rename_mapping)
+        
+        # reorder columns
+        cols = [rename_mapping[col] for col in ['max_training_size', 'kernel', 'noise_std', 'k_delay', 'batch_size', 'rmse']]
+        export_df = export_df[cols]
+        
+        # for old, new in rename_mapping.items():
+            # scores_df['Candidate Function'] = scores_df['Candidate Function'].str.replace(old, new)
+        export_df.reset_index(level=0, inplace=True)
+        export_df['Case'] = export_df['Case'] + 1
+        export_df.sort_values(by='Case', inplace=True)
+        print(export_df)
+        
+        with open(os.path.join(dest_results_dir, 'case_scores.tex'), 'w') as fp:
+            export_df.to_latex(buf=fp,
+                             float_format='%.3f',
+                             caption=caption, label=label,
+                             position='!ht', escape=False, index=False)

@@ -31,12 +31,20 @@ GP_CONSTANTS = {'PROPORTION_TRAINING_DATA': 0.8,
 }
 
 N_TEST_POINTS_PER_COORD = 3
-AX_IND_FACTOR_TEST_POINTS = np.linspace(0.1, 0.3, N_TEST_POINTS_PER_COORD)
-YAW_ANGLE_TEST_POINTS = np.linspace(--15, 15, N_TEST_POINTS_PER_COORD)
-UPSTREAM_WIND_SPEED_TEST_POINTS = np.linspace(8, 12, N_TEST_POINTS_PER_COORD)
-UPSTREAM_WIND_DIR_TEST_POINTS = np.linspace(250, 270, N_TEST_POINTS_PER_COORD)
+AX_IND_FACTOR_INC = 0.1
+YAW_ANGLE_INC = 5
+WIND_SPEED_INC = 2
+WIND_DIR_INC = 10
 
-# TODO
+AX_IND_FACTOR_RANGE = (0.1, 0.3)
+YAW_ANGLE_RANGE = (-0.20, 0.20)
+WIND_SPEED_RANGE = (8, 12)
+WIND_DIR_RANGE = (250, 270)
+
+# AX_IND_FACTOR_TEST_POINTS = np.arange(0.1, 0.3 + 0.01, AX_IND_FACTOR_INC)
+# YAW_ANGLE_TEST_POINTS = np.arange(-0.15, 0.15 + 0.01, YAW_ANGLE_INC) # np.linspace(--15, 15, N_TEST_POINTS_PER_COORD)
+# TURBINE_WIND_SPEED_TEST_POINTS = np.arange(8, 12 + 0.01, TURBINE_WIND_SPEED_INC) #np.linspace(8, 12, N_TEST_POINTS_PER_COORD)
+# FREESTREAM_WIND_DIR_TEST_POINTS = np.arange(250, 270 + 0.01, FREESTREAM_WIND_DIR_INC) #np.linspace(250, 270, N_TEST_POINTS_PER_COORD)
 
 class DownstreamTurbineGPR:
     def __init__(self, kernel,
@@ -74,6 +82,36 @@ class DownstreamTurbineGPR:
         self.X_train_replay = np.zeros((0, self.n_inputs))
         self.y_train_replay = np.zeros((0, self.n_outputs))
         self.k_train_replay = []
+    
+    
+    def generate_X_test(self, X_current):
+        X_test_indices = np.random.randint([N_TEST_POINTS_PER_COORD for l in self.input_labels],
+                                           size=(GP_CONSTANTS['N_TEST_POINTS'], len(self.input_labels)))
+    
+        X_test = []
+        for l_idx, l in enumerate(self.input_labels):
+            if 'AxIndFactors' in l:
+                test_points = np.linspace(max(X_current[l_idx] - AX_IND_FACTOR_INC, AX_IND_FACTOR_RANGE[0]),
+                                          min(X_current[l_idx] + AX_IND_FACTOR_INC, AX_IND_FACTOR_RANGE[1]),
+                                          N_TEST_POINTS_PER_COORD)
+                X_test.append(test_points[X_test_indices[:, l_idx]])
+            elif 'YawAngles' in l:
+                test_points = np.linspace(max(X_current[l_idx] - YAW_ANGLE_INC, YAW_ANGLE_RANGE[0]),
+                                          min(X_current[l_idx] + YAW_ANGLE_INC, YAW_ANGLE_RANGE[1]),
+                                          N_TEST_POINTS_PER_COORD)
+                X_test.append(test_points[X_test_indices[:, l_idx]])
+            elif 'TurbineWindSpeeds' in l:
+                test_points = np.linspace(max(X_current[l_idx] - WIND_SPEED_INC, WIND_SPEED_RANGE[0]),
+                                          min(X_current[l_idx] + WIND_SPEED_INC, WIND_SPEED_RANGE[1]),
+                                          N_TEST_POINTS_PER_COORD)
+                X_test.append(test_points[X_test_indices[:, l_idx]])
+            elif 'FreestreamWindDir' in l:
+                test_points = np.linspace(max(X_current[l_idx] - WIND_DIR_INC, WIND_DIR_RANGE[0]),
+                                          min(X_current[l_idx] + WIND_DIR_INC, WIND_DIR_RANGE[1]),
+                                          N_TEST_POINTS_PER_COORD)
+                X_test.append(test_points[X_test_indices[:, l_idx]])
+    
+        self.X_test = self.X_scaler.transform(np.transpose(X_test))
     
     def compute_test_var(self):
         _, test_std = self.gpr.predict(self.X_test, return_std=True)
@@ -120,14 +158,21 @@ class DownstreamTurbineGPR:
         history_exists = len(k_to_add) > 0
 
         return k_to_add, effective_dk, effective_dk_to_add, history_exists
-
+    
+    def get_X_current(self, measurements_df, k, effective_dk, k_delay=GP_CONSTANTS['K_DELAY']):
+        # TODO
+        X_current = self.X_scaler.transform([generate_input_vector(measurements_df, k, self.upstream_turbine_indices, effective_dk.loc[k], k_delay)[1]])
+        return X_current
+    
     def find_unique_data(self, measurements_df, k_train_potential, effective_dk, k_delay=GP_CONSTANTS['K_DELAY'], y_modeled=None):
         # of all the potential new data points, filter out the unique ones
         X_train_potential = np.vstack([generate_input_vector(
             measurements_df, k, self.upstream_turbine_indices, effective_dk.loc[k], k_delay)[1]
                                        for k in k_train_potential])
-        
+
+        X_current = X_train_potential[np.argmax(k_train_potential), :]
         X_train_potential = self.X_scaler.transform(X_train_potential)
+        
         y_train_potential = (
             measurements_df.loc[k_train_potential, f'TurbineWindSpeeds_{self.turbine_index}'].to_numpy() -
             y_modeled).reshape(-1, self.n_outputs)
@@ -175,7 +220,7 @@ class DownstreamTurbineGPR:
         #     self.y_scaler = StandardScaler().fit(self.y_train_potential)
             # self.y_train_potential = self.y_scaler.transform(self.y_train_potential)
         
-        return X_train_potential, y_train_potential, k_train_potential
+        return X_current, X_train_potential, y_train_potential, k_train_potential
         
     def add_data(self, new_X_train, new_y_train, new_k_train, is_online):
         
