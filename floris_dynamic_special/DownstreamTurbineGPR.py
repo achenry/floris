@@ -64,7 +64,7 @@ class DownstreamTurbineGPR:
 
         self.X_scaler = None
         self.max_training_size = max_training_size
-        self.max_replay_size = max_training_size
+        self.max_replay_size = max_training_size * 10
         self.gpr = GaussianProcessRegressor(
             kernel=kernel,
             optimizer=optimizer, 

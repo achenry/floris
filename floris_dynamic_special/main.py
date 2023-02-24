@@ -96,7 +96,7 @@ MAX_TRAINING_SIZE_VALS = [5, 10, 20]
 NOISE_STD_VALS = [0.001, 0.01, 0.1]
 K_DELAY_VALS = [2, 4, 8]
 BATCH_SIZE_VALS = [1, 2, 4]
-default_kernel = lambda: ConstantKernel(constant_value_bounds=(1e-12, 1e12)) * RBF(length_scale_bounds=(1e-12, 1e12))
+default_kernel = lambda: ConstantKernel(constant_value_bounds=(1e-12, 1e12)) * Matern(length_scale_bounds=(1e-12, 1e12)) # RBF(length_scale_bounds=(1e-12, 1e12))
 default_kernel_idx = 0
 default_max_training_size = 10
 default_batch_size = 1
@@ -299,6 +299,8 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
                           current_input_labels, k_delay, noise_std, batch_size, max_training_size, dataset_type):
     
     print(f'Running Simulation {simulation_idx} for Case {case_idx}')
+    mean_wind_speed = simulation_df['FreestreamWindSpeed'].mean()
+    mean_wind_dir = simulation_df['FreestreamWindDir'].mean()
     
     # Fetch wind farm system layout information, floris interface used to simulate 'true' wind farm
     system_fi = get_system_info(FLORIS_DIR)
@@ -535,7 +537,8 @@ def run_single_simulation(case_idx, gprs, simulation_df, simulation_idx,
 
     results = {'true': y_true, 'modeled': y_modeled, 'pred': y_pred, 'std': y_std, 'meas': y_meas,
                'test_var': test_var,
-               'k_train': k_train_frames, 'max_training_size': max_training_size, 'training_size': training_size}
+               'k_train': k_train_frames, 'max_training_size': max_training_size, 'training_size': training_size,
+               'mean_wind_speed': mean_wind_speed, 'mean_wind_dir': mean_wind_dir}
     
     filename = f'simulation_data_{dataset_type}_case-{case_idx}_df-{simulation_idx}'
     with open(os.path.join(SIM_SAVE_DIR, filename), 'wb') as fp:
@@ -694,7 +697,6 @@ if __name__ == '__main__':
 
         ## PLOT RESULTS
         # plot the true vs predicted gp values over the course of the simulation
-
         
         score_type = 'rmse'
         # turbine_sim_score is n_downstream_turbines X n_simulations matrix of scores
@@ -735,7 +737,13 @@ if __name__ == '__main__':
             best_case_scores_df = scores_df.loc[scores_df['Case'] == best_case_idx]
             scores_case_df = best_case_scores_df.groupby('Simulation')[score_type].median().sort_values(ascending=True)
             best_sim_indices = scores_case_df.index[:n_ts_plots]
-        
+
+        # print('Mean Wind Speeds for Simulations', np.round([np.mean(simulation_results[i][2]['true'][:, 0]) for i in best_sim_indices]))
+        print('Simulation Freestream Wind Params')
+        # print([wake_field_dfs['train'][i][['FreestreamWindSpeed', 'FreestreamWindDir']].mean() for i in best_sim_indices])
+        print('Simulation Freestream Wind Speed', [simulation_results[i][2]['mean_wind_speed'] for i in best_sim_indices])
+        print('Simulation Freestream Wind Dir', [simulation_results[i][2]['mean_wind_dir'] for i in best_sim_indices])
+
         score_fig = plot_score(system_fi, best_case_scores_df, score_type=score_type)
         score_fig.show()
         score_fig.savefig(os.path.join(FIG_DIR, f'score.png'))

@@ -141,7 +141,7 @@ def plot_error_ts(all_ds_indices, ds_indices, simulation_results, time):
 
     for row_idx, (sim_idx, sim_data) in enumerate(simulation_results):
         # std_ax[row_idx, 0].set_title(f'Sim\n{sim_idx}')
-        error_ax[row_idx, 0].set_ylabel(f'Sim {sim_idx}\n[%]', rotation=0, ha='right', labelpad=15.0, y=0.8)
+        error_ax[row_idx, 0].set_ylabel(f'Sim {sim_idx + 1}\n[%]', rotation=0, ha='right', labelpad=15.0, y=0.8)
         for col_idx, ds in enumerate(ds_indices):
             error_ax[0, col_idx].set_title(f'T{ds}')
             error_ax[-1, col_idx].set(xlabel='Time [s]', xticks=list(range(0, time[-1] + 600, 600)))
@@ -176,7 +176,6 @@ def plot_score(system_fi, scores_df, score_type='rmse'):
     c2 = 'green'
     c3 = '#1f77b4'
     lw = 3
-    # TODO match colours with paper
     x = scores_df.sort_values(by='Turbine')[['Turbine', score_type]]
     x = [x.loc[x['Turbine'] == t][score_type].to_list() for t in system_fi.downstream_turbine_indices]
     score_ax.boxplot(x=x, patch_artist=True,
@@ -214,7 +213,7 @@ def plot_ts(all_ds_indices, ds_indices, simulation_results, time):
     min_val = np.infty
     max_val = -np.infty
     for row_idx, (sim_idx, sim_data) in enumerate(simulation_results):
-        ts_ax[row_idx, 0].set_ylabel(f'Sim {sim_idx}\n [m/s]', rotation=0, ha='right', labelpad=15.0, y=0.8)
+        ts_ax[row_idx, 0].set_ylabel(f'Sim {sim_idx + 1}\n [m/s]', rotation=0, ha='right', labelpad=15.0, y=0.8)
         for col_idx, ds in enumerate(ds_indices):
             ts_ax[0, col_idx].set_title(f'T{ds}')
             ts_ax[-1, col_idx].set(xlabel='Time [s]',
@@ -272,7 +271,7 @@ def plot_std_evolution(all_ds_indices, ds_indices, simulation_results, time):
     std_fig, std_ax = plt.subplots(len(simulation_results), len(ds_indices), sharex=True)
     
     for row_idx, (sim_idx, sim_data) in enumerate(simulation_results):
-        std_ax[row_idx, 0].set_ylabel(f'Sim {sim_idx}\n[(m/s)$^2$]', rotation=0, ha='right', labelpad=15.0, y=0.8)
+        std_ax[row_idx, 0].set_ylabel(f'Sim {sim_idx + 1}\n[(m/s)$^2$]', rotation=0, ha='right', labelpad=15.0, y=0.8)
         for col_idx, ds in enumerate(ds_indices):
             std_ax[0, col_idx].set_title(f'T{ds}')
             std_ax[-1, col_idx].set(xlabel='Time [s]',
@@ -295,7 +294,7 @@ def plot_k_train_evolution(all_ds_indices, ds_indices, simulation_results, time)
     k_train_fig, k_train_ax = plt.subplots(len(simulation_results), len(ds_indices), sharex=True, sharey=True)
 
     for row_idx, (sim_idx, sim_data) in enumerate(simulation_results):
-        k_train_ax[row_idx, 0].set_ylabel(f'Sim {sim_idx}\n[s]', rotation=0, ha='right', labelpad=15.0, y=0.8)
+        k_train_ax[row_idx, 0].set_ylabel(f'Sim {sim_idx + 1}\n[s]', rotation=0, ha='right', labelpad=15.0, y=0.8)
         for col_idx, ds in enumerate(ds_indices):
             k_train_ax[0, col_idx].set_title(f'T{ds}')
             k_train_ax[-1, col_idx].set(xlabel='Time [s]', yticks=list(range(0, time[-1] + 600, 600)),
