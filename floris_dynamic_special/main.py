@@ -43,7 +43,7 @@ if sys.platform == 'darwin':
 elif sys.platform == 'linux':
     FARM_LAYOUT = '9turb'
     SIM_SAVE_DIR = f'/scratch/alpine/aohe7145/wake_gp/{FARM_LAYOUT}_wake_field_simulations'
-    TS_SAVE_DIR = f'/scratch/alpine/aohe7145/wake_gp/{FARM_LAYOUT}_wake_field_ts_data'
+    TS_SAVE_DIR = f'/scratch/alpine/aohe7145/wake_gp/{FARM_LAYOUT}_wake_field_tsdata'
     FLORIS_DIR = f'./{FARM_LAYOUT}_floris_input.json'
     BASE_MODEL_FLORIS_DIR = f'./{FARM_LAYOUT}_base_model_floris_input.json'
     DATA_DIR = f'/scratch/alpine/aohe7145/wake_gp/data'
