@@ -48,7 +48,7 @@ elif sys.platform == 'linux':
     BASE_MODEL_FLORIS_DIR = f'./{FARM_LAYOUT}_base_model_floris_input.json'
     DATA_DIR = f'/scratch/alpine/aohe7145/wake_gp/data'
     FIG_DIR = f'/scratch/alpine/aohe7145/wake_gp/figs'
-    SCALARS_DIR = '/scratch/alpine/aohe7145/wake_gp//scalars'
+    SCALARS_DIR = '/scratch/alpine/aohe7145/wake_gp/scalars'
 
 FIGSIZE = (42, 21)
 COLOR_1 = 'darkgreen'
