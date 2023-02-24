@@ -6,6 +6,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from floridyn.tools.visualization import plot_turbines_with_fi, visualize_cut_plane
 import pandas as pd
 import os
+from string import ascii_uppercase
 
 def plot_prediction_vs_input(ax, gpr_fit, inputs, input_labels, X_norm, y_norm, X_scalar, y_scalar, learning_turbine_index, dataset_type):
             
@@ -129,32 +130,51 @@ def plot_measurements(full_offline_measurements_df):
     plt.show()
 
 
-def plot_error_ts(all_ds_indices, ds_indices, simulation_results, time):
+def plot_error_ts(all_ds_indices, grouped_ds_indices, simulation_results, time):
     """
    Relative Error (true turbine effective wind speed vs. GP estimate)
    for given simulations for each downstream turbines vs. time
     Returns:
 
     """
-    error_fig, error_ax = plt.subplots(len(simulation_results),len(ds_indices),
-                                 sharex=True)
+    error_fig, error_ax = plt.subplots(len(simulation_results), len(grouped_ds_indices), sharex=True)
 
     for row_idx, (sim_idx, sim_data) in enumerate(simulation_results):
         # std_ax[row_idx, 0].set_title(f'Sim\n{sim_idx}')
-        error_ax[row_idx, 0].set_ylabel(f'Sim {sim_idx + 1}\n[%]', rotation=0, ha='right', labelpad=15.0, y=0.8)
-        for col_idx, ds in enumerate(ds_indices):
-            error_ax[0, col_idx].set_title(f'T{ds}')
-            error_ax[-1, col_idx].set(xlabel='Time [s]', xticks=list(range(0, time[-1] + 600, 600)))
-            ds_idx = all_ds_indices.index(ds)
+        
+        if len(grouped_ds_indices) == 1:
+            error_ax[row_idx].set_ylabel(f'Sim {ascii_uppercase[row_idx]}\n[%]', rotation=0, ha='right',
+                                            labelpad=15.0, y=0.8)
+        else:
+            error_ax[row_idx, 0].set_ylabel(f'Sim {ascii_uppercase[row_idx]}\n[%]', rotation=0, ha='right', labelpad=15.0, y=0.8)
+        
+        for col_idx, ds_group in enumerate(grouped_ds_indices):
+            title = ''
+            for i, ds in enumerate(ds_group):
+                
+                ds_idx = all_ds_indices.index(ds)
+                title += f'$T{ds}$'
+                if i < len(ds_group) - 1:
+                    title += ', '
+                
+                y_true = sim_data['true'][:, ds_idx]
+                y_pred_abs = sim_data['modeled'][:, ds_idx] + sim_data['pred'][:, ds_idx]
+                
+                score = ((y_pred_abs - y_true) / y_true) * 100
+                
+                if len(grouped_ds_indices) == 1:
+                    error_ax[row_idx].plot(time, score, label=f'$T{ds}$')
+                else:
+                    error_ax[row_idx, col_idx].plot(time, score, label=f'T{ds}')
+        
+            if len(grouped_ds_indices) == 1:
+                error_ax[-1].set(xlabel='Time [s]', xticks=list(range(0, time[-1] + 600, 600)))
+                # error_ax[0].legend(loc='lower center', ncol=len(ds_group))
+            else:
+                error_ax[-1, col_idx].set(xlabel='Time [s]', xticks=list(range(0, time[-1] + 600, 600)))
+                error_ax[0, col_idx].set_title(title)
+                error_ax[0, col_idx].legend(loc='lower center', ncol=len(ds_group))
             
-            y_true = sim_data['true'][:, ds_idx]
-            y_pred = sim_data['pred'][:, ds_idx]
-            y_modeled = sim_data['modeled'][:, ds_idx]
-            score = ((y_pred + y_modeled - y_true) / y_true) * 100
-            
-            error_ax[row_idx, col_idx].plot(time, score, label=f'T{ds}')
-    
-    # error_ax[0].legend(loc='upper center')
     return error_fig
 
 def plot_score(system_fi, scores_df, score_type='rmse'):
@@ -176,8 +196,8 @@ def plot_score(system_fi, scores_df, score_type='rmse'):
     c2 = 'green'
     c3 = '#1f77b4'
     lw = 3
-    x = scores_df.sort_values(by='Turbine')[['Turbine', score_type]]
-    x = [x.loc[x['Turbine'] == t][score_type].to_list() for t in system_fi.downstream_turbine_indices]
+    x = scores_df.sort_values(by='Turbine')[['Turbine', 'rmse']]
+    x = [x.loc[x['Turbine'] == t]['rmse'].to_list() for t in system_fi.downstream_turbine_indices]
     score_ax.boxplot(x=x, patch_artist=True,
                      boxprops=dict(facecolor='white', color=c1, linewidth=lw), # facecolor
                      capprops=dict(color=c2, linewidth=lw),
@@ -191,7 +211,7 @@ def plot_score(system_fi, scores_df, score_type='rmse'):
     #     title=f'Downstream Turbine Effective Wind Speed {score_type.upper()} Score over all {dataset_type.capitalize()}ing Simulations [m/s]'
     # )
 
-    score_ax.set(xlabel='Turbine', xticklabels=[f'T{t}' for t in system_fi.downstream_turbine_indices])
+    score_ax.set(xlabel='Turbine', xticklabels=[f'$T{t}$' for t in system_fi.downstream_turbine_indices])
     score_ax.set_ylabel(f'RMSE\n[m/s]', rotation=0, ha='right', labelpad=15, y=0.8)
     return score_fig
 
@@ -213,30 +233,33 @@ def plot_ts(all_ds_indices, ds_indices, simulation_results, time):
     min_val = np.infty
     max_val = -np.infty
     for row_idx, (sim_idx, sim_data) in enumerate(simulation_results):
-        ts_ax[row_idx, 0].set_ylabel(f'Sim {sim_idx + 1}\n [m/s]', rotation=0, ha='right', labelpad=15.0, y=0.8)
+        ts_ax[row_idx, 0].set_ylabel(f'Sim {ascii_uppercase[row_idx]}\n [m/s]', rotation=0, ha='right', labelpad=15.0, y=0.8)
         for col_idx, ds in enumerate(ds_indices):
-            ts_ax[0, col_idx].set_title(f'T{ds}')
+            ts_ax[0, col_idx].set_title(f'$T{ds}$')
             ts_ax[-1, col_idx].set(xlabel='Time [s]',
                                    xticks=list(range(0, time[-1] + 600, 600)),
                                     xticklabels=[f'{t}' for t in list(range(0, time[-1] + 600, 600))])
             ds_idx = all_ds_indices.index(ds)
-            
+            y_pred_abs = sim_data['modeled'][:, ds_idx] + sim_data['pred'][:, ds_idx]
+            y_meas = sim_data['meas'][:, ds_idx]
             # ts_ax[ds_idx, ax_idx].scatter(time, simulation_results[dataset_type][sim_idx]['true'][:, ds_idx],
             #                    color='orange', label=f'True', marker="o")
-            ts_ax[row_idx, col_idx].plot(time, sim_data['pred'][:, ds_idx], color='green', label=f'Predicted Mean')
+            ts_ax[row_idx, col_idx].plot(time, y_pred_abs,
+                                         color='green', label=f'Predicted Mean')
             # ts_ax[ds_idx, ax_idx].plot(time, simulation_results[dataset_type][sim_idx]['modeled'][:, ds_idx],
             #                    color='purple', label=f'Base Modeled')
-            ts_ax[row_idx, col_idx].plot(time, sim_data['meas'][:, ds_idx] - sim_data['modeled'][:, ds_idx],
+            ts_ax[row_idx, col_idx].plot(time, y_meas,
                                           color='red', label=f'Measurements')
-            ts_ax[row_idx, col_idx].fill_between(time, sim_data['pred'][:, ds_idx] - sim_data['std'][:, ds_idx],
-                                       sim_data['pred'][:, ds_idx] + sim_data['std'][:, ds_idx],
-                                       alpha=0.1, label=f'Predicted Std. Dev.', color='lightgreen')
+            ts_ax[row_idx, col_idx].fill_between(time,
+                                                 y_pred_abs - sim_data['std'][:, ds_idx],
+                                                 y_pred_abs + sim_data['std'][:, ds_idx],
+                                                 alpha=0.1, label=f'Predicted Std. Dev.', color='lightgreen')
 
             min_val = min(min_val, np.nanmin([ln.get_ydata() for ln in ts_ax[row_idx, col_idx].get_lines()]))
             max_val = max(max_val, np.nanmax([ln.get_ydata() for ln in ts_ax[row_idx, col_idx].get_lines()]))
     
-    min_val = max(min_val, -WIND_SPEED_RANGE[1] / 2)
-    max_val = min(max_val, WIND_SPEED_RANGE[0] / 2)
+    min_val = max(min_val, WIND_SPEED_RANGE[0] * 0.5)
+    max_val = min(max_val, WIND_SPEED_RANGE[1])
    
     for row_idx, (sim_idx, sim_data) in enumerate(simulation_results):
         for col_idx, ds in enumerate(ds_indices):
@@ -271,9 +294,9 @@ def plot_std_evolution(all_ds_indices, ds_indices, simulation_results, time):
     std_fig, std_ax = plt.subplots(len(simulation_results), len(ds_indices), sharex=True)
     
     for row_idx, (sim_idx, sim_data) in enumerate(simulation_results):
-        std_ax[row_idx, 0].set_ylabel(f'Sim {sim_idx + 1}\n[(m/s)$^2$]', rotation=0, ha='right', labelpad=15.0, y=0.8)
+        std_ax[row_idx, 0].set_ylabel(f'Sim {ascii_uppercase[row_idx]}\n[(m/s)$^2$]', rotation=0, ha='right', labelpad=15.0, y=0.8)
         for col_idx, ds in enumerate(ds_indices):
-            std_ax[0, col_idx].set_title(f'T{ds}')
+            std_ax[0, col_idx].set_title(f'$T{ds}$')
             std_ax[-1, col_idx].set(xlabel='Time [s]',
                                     xticks=list(range(0, time[-1] + 600, 600)),
                                     xticklabels=[f'{t}' for t in list(range(0, time[-1] + 600, 600))])
@@ -294,9 +317,9 @@ def plot_k_train_evolution(all_ds_indices, ds_indices, simulation_results, time)
     k_train_fig, k_train_ax = plt.subplots(len(simulation_results), len(ds_indices), sharex=True, sharey=True)
 
     for row_idx, (sim_idx, sim_data) in enumerate(simulation_results):
-        k_train_ax[row_idx, 0].set_ylabel(f'Sim {sim_idx + 1}\n[s]', rotation=0, ha='right', labelpad=15.0, y=0.8)
+        k_train_ax[row_idx, 0].set_ylabel(f'Sim {ascii_uppercase[row_idx]}\n[s]', rotation=0, ha='right', labelpad=15.0, y=0.8)
         for col_idx, ds in enumerate(ds_indices):
-            k_train_ax[0, col_idx].set_title(f'T{ds}')
+            k_train_ax[0, col_idx].set_title(f'$T{ds}$')
             k_train_ax[-1, col_idx].set(xlabel='Time [s]', yticks=list(range(0, time[-1] + 600, 600)),
                                         xticks=list(range(0, time[-1] + 600, 600)),
                                     xticklabels=[f'{t}' for t in list(range(0, time[-1] + 600, 600))])
@@ -310,12 +333,15 @@ def plot_k_train_evolution(all_ds_indices, ds_indices, simulation_results, time)
 
     return k_train_fig
 
-def compute_scores(system_fi, cases, simulation_results, score_type):
+def compute_scores(system_fi, cases, simulation_results):
 
     case_vals = []
     sim_vals = []
     turbine_vals = []
-    score_vals = []
+    rmse_vals = []
+    r2_vals = []
+    mean_rel_error_vals = []
+    max_rel_error_vals = []
     # for each downstream turbine
     for i, ds_idx in enumerate(system_fi.downstream_turbine_indices):
         
@@ -323,17 +349,20 @@ def compute_scores(system_fi, cases, simulation_results, score_type):
         # turbine_scores = []
         for case_idx, sim_idx, sim in simulation_results:
             y_true = sim['true'][:, i]
-            y_pred = sim['pred'][:, i]
-            y_modeled = sim['modeled'][:, i]
-            if score_type == 'rmse':
-                score = np.nanmean(((y_true - y_modeled) - y_pred)**2)**0.5
-            elif score_type == 'r2':
-                score = 1 - (np.nansum(((y_true - y_modeled) - y_pred)**2) / np.nansum((y_true - np.nanmean(y_true))**2))
-            
+            y_pred_abs = sim['modeled'][:, i] + sim['pred'][:, i]
+            rmse = np.nanmean((y_true - y_pred_abs)**2)**0.5
+            r2 = 1 - (np.nansum((y_true - y_pred_abs)**2) / np.nansum((y_true - np.nanmean(y_true))**2))
+            rel_error = np.abs((y_pred_abs - y_true) / y_true) * 100
+            mean_rel_error = np.nanmean(rel_error)
+            max_rel_error = np.nanmax(rel_error)
+
             case_vals.append(case_idx)
             sim_vals.append(sim_idx)
             turbine_vals.append(ds_idx)
-            score_vals.append(score)
+            rmse_vals.append(rmse)
+            r2_vals.append(r2)
+            mean_rel_error_vals.append(mean_rel_error)
+            max_rel_error_vals.append(max_rel_error)
         
     scores = pd.DataFrame(data={
         'Case': case_vals,
@@ -344,7 +373,10 @@ def compute_scores(system_fi, cases, simulation_results, score_type):
         'batch_size': [cases[case_idx]['batch_size'] for case_idx in case_vals],
         'Simulation': sim_vals,
         'Turbine': turbine_vals,
-        f'{score_type}': score_vals
+         'rmse': rmse_vals,
+         'r2': r2_vals,
+        'mean_rel_error': mean_rel_error_vals,
+        'max_rel_error': max_rel_error_vals
     })
 
     return scores
@@ -386,7 +418,7 @@ def generate_scores_table(scores_df):
     # \end{tabular}
     
     captions = [
-    '$RMSE$ of the \\ac{GP}-Predicted vs. True Effective Velocities for Different Learning Parameters'
+    'Scores of the \\ac{GP}-Predicted vs. True Effective Velocities for Different Learning Parameters'
     ]
     
     labels = [
@@ -408,8 +440,10 @@ def generate_scores_table(scores_df):
                 scores_df['kernel'].iloc[row_idx] = r"Mat\'ern"
         
         # colour lowest rmse with lightest gray, highest with darkest gray
-        for row_idx, row in enumerate(export_df['rmse']):
+        for row_idx, row in export_df.iterrows():
             scores_df['rmse'].iloc[row_idx] = r'\cellcolor{Gray' + f'{10 - row_idx}' + r'}' + format(scores_df["rmse"].iloc[row_idx], '.3f')
+            scores_df['mean_rel_error'].iloc[row_idx] = format(scores_df["mean_rel_error"].iloc[row_idx], '.3f') + r'$\%$'
+            scores_df['max_rel_error'].iloc[row_idx] = format(scores_df["max_rel_error"].iloc[row_idx], '.3f') + "$\%$"
         
         # Rename features in Candidate Function column
         rename_mapping = {
@@ -418,12 +452,17 @@ def generate_scores_table(scores_df):
             'noise_std': r'$\sigma_n$',
             'k_delay': r'$k_\text{delay}$',
             'batch_size': r'$q$',
-            'rmse': r'$RMSE$'
+            'rmse': r'$RMSE$',
+            'r2': r'$R^2$'
+            # 'mean_rel_error': r'$\bar{e}$',
+            # 'max_rel_error': r'$e^\star$'
         }
+        export_df.drop(columns=['mean_rel_error', 'max_rel_error'], inplace=True)
         export_df = scores_df.rename(columns=rename_mapping)
         
         # reorder columns
-        cols = [rename_mapping[col] for col in ['max_training_size', 'kernel', 'noise_std', 'k_delay', 'batch_size', 'rmse']]
+        cols = [rename_mapping[col] for col in ['max_training_size', 'kernel', 'noise_std', 'k_delay', 'batch_size',
+                                                'rmse', 'r2']] #, 'mean_rel_error', 'max_rel_error']]
         export_df = export_df[cols]
         
         # for old, new in rename_mapping.items():
