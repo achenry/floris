@@ -1,0 +1,21 @@
+\begin{table}[!ht]
+\centering
+\caption{Scores of the \ac{GP}-Predicted vs. True Effective Velocities for Different Learning Parameters}
+\label{tab:scores}
+\begin{tabular}{rrlrrrlr}
+\toprule
+ Case &  $N_\text{tr}$ & $K(\cdot, \cdot)$ &  $\sigma_n$ &  $k_\text{delay}$ &  $q$ &                  $RMSE$ &  $R^2$ \\
+\midrule
+    1 &             10 &          Mat\'ern &       0.010 &                 4 &    1 &  \cellcolor{Gray8}0.066 &  0.899 \\
+    2 &             10 &          Mat\'ern &       0.010 &                 4 &    2 &  \cellcolor{Gray2}0.155 &  0.166 \\
+    3 &             10 &          Mat\'ern &       0.010 &                 4 &    4 &  \cellcolor{Gray1}0.261 & -0.271 \\
+    4 &             10 &          Mat\'ern &       0.010 &                 2 &    1 &  \cellcolor{Gray3}0.073 &  0.859 \\
+    5 &             10 &          Mat\'ern &       0.010 &                 8 &    1 &  \cellcolor{Gray4}0.070 &  0.930 \\
+    6 &             10 &          Mat\'ern &       0.001 &                 4 &    1 &  \cellcolor{Gray6}0.066 &  0.901 \\
+    7 &             10 &          Mat\'ern &       0.100 &                 4 &    1 &  \cellcolor{Gray7}0.066 &  0.905 \\
+    8 &              5 &          Mat\'ern &       0.010 &                 4 &    1 & \cellcolor{Gray10}0.051 &  0.933 \\
+    9 &             20 &          Mat\'ern &       0.010 &                 4 &    1 &  \cellcolor{Gray5}0.067 &  0.888 \\
+   10 &             10 &                SE &       0.010 &                 4 &    1 &  \cellcolor{Gray9}0.065 &  0.894 \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -396,11 +396,11 @@ def plot_wind_farm(system_fi):
         farm_ax.annotate(f'T{t}', (x, y), ha="center", va="center")
     
     farm_ax.set_xlabel('Streamwise Distance [m]')
-    farm_ax.set_ylabel('Cross-\nStream\nDistance\n[m]', rotation=0, ha='right', labelpad=15.0, y=0.8)
+    farm_ax.set_ylabel('Cross-\nStream\nDistance\n[m]', rotation=0, ha='right', labelpad=15.0, y=0.7)
     
     return farm_fig
 
-def generate_scores_table(scores_df):
+def generate_scores_table(scores_df, save_dir):
     # \begin{tabular}{llllllll}
     # Case & $N_\text
     # {tr}$ & $K(\cdot, \cdot)$ & $\sigma_n$ & $k_\text
@@ -424,11 +424,6 @@ def generate_scores_table(scores_df):
     labels = [
         'tab:scores'
     ]
-    project_dir = '/Users/aoifework/Documents/Research/wake_modeling'
-    dest_results_dir = os.path.join(project_dir, 'tables')
-    if not os.path.exists(dest_results_dir):
-        os.mkdir(dest_results_dir)
-    
     
     for caption, label in zip(captions, labels):
         
@@ -472,7 +467,7 @@ def generate_scores_table(scores_df):
         export_df.sort_values(by='Case', inplace=True)
         print(export_df)
         
-        with open(os.path.join(dest_results_dir, 'case_scores.tex'), 'w') as fp:
+        with open(os.path.join(save_dir, 'case_scores.tex'), 'w') as fp:
             export_df.to_latex(buf=fp,
                              float_format='%.3f',
                              caption=caption, label=label,

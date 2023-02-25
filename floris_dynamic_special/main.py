@@ -723,8 +723,9 @@ if __name__ == '__main__':
         scores_by_case_df['noise_std'] = [cases[case_idx]['noise_std'] for case_idx in scores_by_case_df.index]
         scores_by_case_df['k_delay'] = [cases[case_idx]['k_delay'] for case_idx in scores_by_case_df.index]
         scores_by_case_df['batch_size'] = [cases[case_idx]['batch_size'] for case_idx in scores_by_case_df.index]
+        scores_by_case_df.to_csv(os.path.join(FIG_DIR, 'scores_by_case.csv'))
         
-        generate_scores_table(scores_by_case_df)
+        generate_scores_table(scores_by_case_df, FIG_DIR)
         
         n_ts_plots = 2
         # if score_type == 'r2':  # best score is greatest
