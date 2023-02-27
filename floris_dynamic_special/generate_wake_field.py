@@ -74,7 +74,7 @@ TOTAL_TIME = 3600
 # hold mean freestream wind speed and wind direction constant over simulation time span
 FREESTREAM_WIND_SPEEDS = [step_change([val], TOTAL_TIME, DT) for val in ([8, 10, 12] if DEBUG else [8, 10, 12])]
 FREESTREAM_WIND_DIRS = [step_change([val], TOTAL_TIME, DT) for val in ([250, 260, 270] if DEBUG else [250, 260, 270])]
-JENSEN_WAKE_COEFFS = [0.034] # np.linspace(0.032, 0.036, 10, endpoint=False)
+JENSEN_WAKE_COEFFS = [0.0365] #np.linspace(0.036, 0.038, 10, endpoint=True) #np.linspace(0.032, 0.036, 10, endpoint=False) # [0.034]
 
 # vary yaw angles and axial induction factors of upstream turbines over course of each simulation
 # YAW_ANGLES = [step_change([0.0, 7.5, 15], TOTAL_TIME, DT)] if DEBUG else \
@@ -414,14 +414,14 @@ def plot_ts(dfs, upstream_turbine_indices, downstream_turbine_indices):
     
 if __name__ == '__main__':
     # if not DEBUG:
-    if True:
+    if False:
         pool = Pool()
         res = pool.starmap(sim_func, zip(range(len(case_list)), case_list))
         dfs, horizontal_planes, y_planes, cross_planes = [r[0] for r in res], [r[1] for r in res], [r[2] for r in res], [r[3] for r in res]
         pool.close()
     
     else:
-        dfs = [pd.read_csv(os.path.join(save_dir, f'case_{case_idx}.csv')) for case_idx in range(90)]
+        dfs = [pd.read_csv(os.path.join(save_dir, f'case_{case_idx}.csv')) for case_idx in range(N_CASES)]
         # group simulations by wake decay coefficient value
         df_all_cases = pd.concat(dfs)
         # access time-series data for distinct values of we
@@ -436,7 +436,7 @@ if __name__ == '__main__':
             scores['R2'].append(r2_score(ts['True'], ts['Pred']))
        
         scores = pd.DataFrame(scores)
-        scores.groupby(by="JensenWe").median()
+        scores.groupby(by="JensenWe").median().sort_values(by='R2', ascending=False)
         score_fig, score_ax = plt.subplots(1, 1)
         for ds_idx, ds in enumerate(downstream_turbine_indices):
             rows = scores.loc[scores['Turbine'] == ds]
