@@ -686,15 +686,26 @@ if __name__ == '__main__':
     if GENERATE_PLOTS:
         system_fi = get_system_info(FLORIS_DIR)
         ## FETCH SIMULATION RESULTS
-        simulation_results = []
+        def get_simulation_results(filepath, i):
+            case_idx = int(filepath[filepath.index('case') + len('case') + 1])
+            sim_idx = int(filepath[filepath.index('df') + len('df') + 1])
+            with open(filepath, 'rb') as fp:
+                return case_idx, sim_idx, pickle.load(fp)
+            
+        simulation_filepaths = []
         for root, dir, filenames in os.walk(SIM_SAVE_DIR):
             for filename in sorted(filenames):
                 if 'simulation_data' in filename:
-                    case_idx = int(filename[filename.index('case') + len('case') + 1])
-                    sim_idx = int(filename[filename.index('df') + len('df') + 1])
-                    with open(os.path.join(SIM_SAVE_DIR, filename), 'rb') as fp:
-                        simulation_results.append((case_idx, sim_idx, pickle.load(fp)))
-
+                    simulation_filepaths.append(os.path.join(SIM_SAVE_DIR, filename))
+                    # case_idx = int(filename[filename.index('case') + len('case') + 1])
+                    # sim_idx = int(filename[filename.index('df') + len('df') + 1])
+                    # with open(os.path.join(SIM_SAVE_DIR, filename), 'rb') as fp:
+                    #     simulation_results.append((case_idx, sim_idx, pickle.load(fp)))
+        
+        pool = mp.Pool(mp.cpu_count())
+        simulation_results = pool.starmap(get_simulation_results, [(fp, 0) for fp in simulation_filepaths])
+        pool.close()
+        
         ## PLOT RESULTS
         # plot the true vs predicted gp values over the course of the simulation
         
