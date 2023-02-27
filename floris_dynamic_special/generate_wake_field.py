@@ -414,7 +414,7 @@ def plot_ts(dfs, upstream_turbine_indices, downstream_turbine_indices):
     
 if __name__ == '__main__':
     # if not DEBUG:
-    if False:
+    if True:
         pool = Pool()
         res = pool.starmap(sim_func, zip(range(len(case_list)), case_list))
         dfs, horizontal_planes, y_planes, cross_planes = [r[0] for r in res], [r[1] for r in res], [r[2] for r in res], [r[3] for r in res]
