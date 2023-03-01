@@ -90,13 +90,13 @@ TMAX = 3600 #300 if DEBUG else 1200
 N_TOTAL_DATASETS = 9 if DEBUG else 500
 
 # construct case hierarchy
-KERNELS = [lambda: ConstantKernel(constant_value_bounds=(1e-12, 1e12)) * RBF(length_scale_bounds=(1e-12, 1e12)),
-           lambda: ConstantKernel(constant_value_bounds=(1e-12, 1e12)) * Matern(length_scale_bounds=(1e-12, 1e12))]
+KERNELS = [lambda: ConstantKernel() * RBF(),
+           lambda: ConstantKernel() * Matern()]
 MAX_TRAINING_SIZE_VALS = [5, 10, 20]
 NOISE_STD_VALS = [0.001, 0.01, 0.1]
 K_DELAY_VALS = [2, 4, 8]
 BATCH_SIZE_VALS = [1, 2, 4]
-default_kernel = lambda: ConstantKernel(constant_value_bounds=(1e-12, 1e12)) * Matern(length_scale_bounds=(1e-12, 1e12)) # RBF(length_scale_bounds=(1e-12, 1e12))
+default_kernel = lambda: ConstantKernel() * Matern() # RBF(length_scale_bounds=(1e-12, 1e12))
 default_kernel_idx = 1
 default_max_training_size = 10
 default_batch_size = 1
