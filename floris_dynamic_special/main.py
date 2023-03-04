@@ -23,7 +23,8 @@ import matplotlib as mpl
 from preprocessing import add_gaussian_noise
 import multiprocessing as mp
 from multiprocessing import Pool
-from postprocessing import plot_score, plot_std_evolution, plot_ts, plot_error_ts, plot_k_train_evolution, compute_scores, plot_wind_farm, generate_scores_table
+from postprocessing import plot_score, plot_std_evolution, plot_ts, plot_error_ts, plot_k_train_evolution, \
+    compute_scores, compute_errors, plot_wind_farm, generate_scores_table, generate_errors_table
 # import matplotlib.animation as animation
 # from matplotlib.animation import FuncAnimation, FFMpegWriter
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel, Matern
@@ -712,7 +713,8 @@ if __name__ == '__main__':
         # score_type = 'rmse'
         # turbine_sim_score is n_downstream_turbines X n_simulations matrix of scores
         scores_df = compute_scores(system_fi, cases, simulation_results)
-        
+        errors_df = compute_errors(system_fi, cases, simulation_results)
+
         for case_idx, case in enumerate(cases):
             if case is None:
                 continue
@@ -747,6 +749,13 @@ if __name__ == '__main__':
         # elif score_type == 'rmse':  # best score is least
         best_case_idx = scores_by_case_df.index[0]
         best_case_scores_df = scores_df.loc[scores_df['Case'] == best_case_idx]
+        best_case_errors_df = errors_df.loc[errors_df['Case'] == best_case_idx]
+        best_case_scores_df.to_csv(os.path.join(FIG_DIR, 'best_case_scores.csv'))
+        best_case_errors_df.to_csv(os.path.join(FIG_DIR, 'best_case_errors.csv'))
+        
+        best_errors_df = best_case_scores_df.groupby('Turbine')[['mean_rel_error', 'max_rel_error']].max().sort_values(by='mean_rel_error', ascending=True)
+        generate_errors_table(best_errors_df, FIG_DIR, best_case_idx)
+        
         scores_case_df = best_case_scores_df.groupby('Simulation')['rmse'].median().sort_values(ascending=True)
         best_sim_indices = scores_case_df.index[:n_ts_plots]
 
@@ -756,7 +765,7 @@ if __name__ == '__main__':
         print('Simulation Freestream Wind Speed', [simulation_results[i][2]['mean_wind_speed'] for i in best_sim_indices])
         print('Simulation Freestream Wind Dir', [simulation_results[i][2]['mean_wind_dir'] for i in best_sim_indices])
 
-        score_fig = plot_score(system_fi, best_case_scores_df)
+        score_fig = plot_score(system_fi, best_case_scores_df, best_case_errors_df)
         score_fig.show()
         score_fig.savefig(os.path.join(FIG_DIR, f'score.png'))
         
@@ -774,27 +783,27 @@ if __name__ == '__main__':
         ts_fig.show()
         ts_fig.savefig(os.path.join(FIG_DIR, f'time_series.png'))
         
-        std_fig = plot_std_evolution(system_fi.downstream_turbine_indices, ds_indices,
-                                     best_case_simulation_results, time_ts)
-        std_fig.show()
-        std_fig.savefig(os.path.join(FIG_DIR, f'std_evolution.png'))
-        
-        k_train_fig = plot_k_train_evolution(system_fi.downstream_turbine_indices, ds_indices,
-                                             best_case_simulation_results, time_ts)
-        k_train_fig.show()
-        k_train_fig.savefig(os.path.join(FIG_DIR, f'k_train_evolution.png'))
+        # std_fig = plot_std_evolution(system_fi.downstream_turbine_indices, ds_indices,
+        #                              best_case_simulation_results, time_ts)
+        # std_fig.show()
+        # std_fig.savefig(os.path.join(FIG_DIR, f'std_evolution.png'))
+        #
+        # k_train_fig = plot_k_train_evolution(system_fi.downstream_turbine_indices, ds_indices,
+        #                                      best_case_simulation_results, time_ts)
+        # k_train_fig.show()
+        # k_train_fig.savefig(os.path.join(FIG_DIR, f'k_train_evolution.png'))
         
         # PLOT_MULT_TURBINES = True
-        error_ds_indices = [[3,4,5], [6,7,8]] # grouped for each axis
-        error_ts_fig = plot_error_ts(system_fi.downstream_turbine_indices,
-                                     error_ds_indices,
-                                     best_case_simulation_results, time_ts)
-        error_ts_fig.show()
-        error_ts_fig.savefig(os.path.join(FIG_DIR, f'error_ts.png'))
+        # error_ds_indices = [[3,4,5], [6,7,8]] # grouped for each axis
+        # error_ts_fig = plot_error_ts(system_fi.downstream_turbine_indices,
+        #                              error_ds_indices,
+        #                              best_case_simulation_results, time_ts)
+        # error_ts_fig.show()
+        # error_ts_fig.savefig(os.path.join(FIG_DIR, f'error_ts.png'))
         
-        farm_fig = plot_wind_farm(system_fi)
-        farm_fig.show()
-        farm_fig.savefig(os.path.join(FIG_DIR, f'wind_farm.png'))
+        # farm_fig = plot_wind_farm(system_fi)
+        # farm_fig.show()
+        # farm_fig.savefig(os.path.join(FIG_DIR, f'wind_farm.png'))
 
         # def plot_score_evolution():
         #     """

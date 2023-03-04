@@ -177,15 +177,17 @@ def plot_error_ts(all_ds_indices, grouped_ds_indices, simulation_results, time):
             
     return error_fig
 
-def plot_score(system_fi, scores_df, score_type='rmse'):
+def plot_score(system_fi, *dfs,
+               score_type=[('rmse', '$RMSE_d$\n[m/s]'), ('rel_error', '$\hat{\epsilon}$ [$\\%$]')]):
     """
    RMSE mean and std (true turbine effective wind speed vs. GP estimate) over all simulations for
     each downstream turbine
     Returns:
     
     """
-    score_fig, score_ax = plt.subplots(1, 1)
-    
+    score_fig, score_ax = plt.subplots(len(score_type), 1, sharex=True)
+    if len(score_type) == 1:
+        score_ax = [score_ax]
     # score_ax.errorbar(x=system_fi.downstream_turbine_indices,
     #                           y=turbine_score_mean[dataset_type],
     #                           yerr=turbine_score_std[dataset_type],
@@ -196,23 +198,28 @@ def plot_score(system_fi, scores_df, score_type='rmse'):
     c2 = 'green'
     c3 = '#1f77b4'
     lw = 3
-    x = scores_df.sort_values(by='Turbine')[['Turbine', 'rmse']]
-    x = [x.loc[x['Turbine'] == t]['rmse'].to_list() for t in system_fi.downstream_turbine_indices]
-    score_ax.boxplot(x=x, patch_artist=True,
-                     boxprops=dict(facecolor='white', color=c1, linewidth=lw), # facecolor
-                     capprops=dict(color=c2, linewidth=lw),
-                     whiskerprops=dict(color=c2, linewidth=lw),
-                     flierprops=dict(color=c1, markeredgecolor=c2),
-                     medianprops=dict(color=c3, linewidth=lw)
-                     )
+    
+    for ax_idx, (score_col, score_label) in enumerate(score_type):
+        df = dfs[ax_idx]
+        x = df.sort_values(by='Turbine')[['Turbine', score_col]]
+        vals = [x.loc[x['Turbine'] == t][score_col].to_list() for t in system_fi.downstream_turbine_indices]
+        score_ax[ax_idx].boxplot(x=vals, patch_artist=True,
+                         boxprops=dict(facecolor='white', color=c1, linewidth=lw), # facecolor
+                         capprops=dict(color=c2, linewidth=lw),
+                         whiskerprops=dict(color=c2, linewidth=lw),
+                         flierprops=dict(color=c1, markeredgecolor=c2),
+                         medianprops=dict(color=c3, linewidth=lw)
+                         )
+        score_ax[ax_idx].set_ylabel(score_label, rotation=0, ha='right', labelpad=15, y=0.8)
+        # score_ax[ax_idx].set(xlabel='Turbine', xticklabels=[f'$T{t}$' for t in system_fi.downstream_turbine_indices])
     # score_fig.show()
     
     # score_ax[ax_idx].set(
     #     title=f'Downstream Turbine Effective Wind Speed {score_type.upper()} Score over all {dataset_type.capitalize()}ing Simulations [m/s]'
     # )
 
-    score_ax.set(xlabel='Turbine', xticklabels=[f'$T{t}$' for t in system_fi.downstream_turbine_indices])
-    score_ax.set_ylabel(f'RMSE\n[m/s]', rotation=0, ha='right', labelpad=15, y=0.8)
+    score_ax[-1].set(xlabel='Turbine')
+    score_ax[-1].set_xticks(ticks=np.arange(1, len(system_fi.downstream_turbine_indices) + 1), labels=[f'$T{t}$' for t in system_fi.downstream_turbine_indices])
     return score_fig
 
 
@@ -240,40 +247,43 @@ def plot_ts(all_ds_indices, ds_indices, simulation_results, time):
                                    xticks=list(range(0, time[-1] + 600, 600)),
                                     xticklabels=[f'{t}' for t in list(range(0, time[-1] + 600, 600))])
             ds_idx = all_ds_indices.index(ds)
-            y_pred_abs = sim_data['modeled'][:, ds_idx] + sim_data['pred'][:, ds_idx]
-            y_meas = sim_data['meas'][:, ds_idx]
+            
+            y_mod = sim_data['modeled'][:, ds_idx]
+            y_pred_abs = y_mod + sim_data['pred'][:, ds_idx]
+            # y_meas = sim_data['meas'][:, ds_idx]
+            y_true = sim_data['true'][:, ds_idx]
+            
             # ts_ax[ds_idx, ax_idx].scatter(time, simulation_results[dataset_type][sim_idx]['true'][:, ds_idx],
             #                    color='orange', label=f'True', marker="o")
-            ts_ax[row_idx, col_idx].plot(time, y_pred_abs,
-                                         color='green', label=f'Predicted Mean')
-            # ts_ax[ds_idx, ax_idx].plot(time, simulation_results[dataset_type][sim_idx]['modeled'][:, ds_idx],
-            #                    color='purple', label=f'Base Modeled')
-            ts_ax[row_idx, col_idx].plot(time, y_meas,
-                                          color='red', label=f'Measurements')
+            ts_ax[row_idx, col_idx].plot(time, y_pred_abs, color='green', label=f'Predicted Mean')
+            ts_ax[row_idx, col_idx].plot(time, y_mod,
+                               color='#1f77b4', label=f'Base Modeled')
+            # ts_ax[row_idx, col_idx].plot(time, y_meas, color='red', label=f'Measurements')
+            ts_ax[row_idx, col_idx].plot(time, y_true, color='red', label=f'True')
             ts_ax[row_idx, col_idx].fill_between(time,
                                                  y_pred_abs - sim_data['std'][:, ds_idx],
                                                  y_pred_abs + sim_data['std'][:, ds_idx],
-                                                 alpha=0.1, label=f'Predicted Std. Dev.', color='lightgreen')
+                                                 alpha=0.5, label=f'Predicted Std. Dev.', color='lightgreen')
 
             min_val = min(min_val, np.nanmin([ln.get_ydata() for ln in ts_ax[row_idx, col_idx].get_lines()]))
             max_val = max(max_val, np.nanmax([ln.get_ydata() for ln in ts_ax[row_idx, col_idx].get_lines()]))
-    
+            
     min_val = max(min_val, WIND_SPEED_RANGE[0] * 0.5)
     max_val = min(max_val, WIND_SPEED_RANGE[1])
-   
+    
     for row_idx, (sim_idx, sim_data) in enumerate(simulation_results):
         for col_idx, ds in enumerate(ds_indices):
             ds_idx = all_ds_indices.index(ds)
-     
-            training_start_idx = [time[k_idx] for k_idx, ts in enumerate(sim_data['training_size']) if ts[ds_idx] > 0][0]
-            max_training_size = sim_data['max_training_size']
-            training_end_idx = [time[k_idx] for k_idx, ts in enumerate(sim_data['training_size']) if ts[ds_idx] == max_training_size][0]
-            ts_ax[row_idx, col_idx].plot([training_start_idx, training_start_idx], [min_val, max_val], linestyle='--',
-                                       color=c1)
-            
+
+            # training_start_idx = [time[k_idx] for k_idx, ts in enumerate(sim_data['training_size']) if ts[ds_idx] > 0][0]
+            # max_training_size = sim_data['max_training_size']
+            # training_end_idx = [time[k_idx] for k_idx, ts in enumerate(sim_data['training_size']) if ts[ds_idx] == max_training_size][0]
+            # ts_ax[row_idx, col_idx].plot([training_start_idx, training_start_idx], [min_val, max_val], linestyle='--',
+            #                            color=c1)
+
             ts_ax[row_idx, col_idx].set(ylim=(min_val, max_val))
-            ts_ax[row_idx, col_idx].plot([training_end_idx, training_end_idx], [min_val, max_val], linestyle='--',
-                                    color=c1)
+            # ts_ax[row_idx, col_idx].plot([training_end_idx, training_end_idx], [min_val, max_val], linestyle='--',
+            #                         color=c1)
 
             # ts_ax[ax_idx].set(
             #     title=f'Downstream Turbine Effective Wind Speeds for {dataset_type.capitalize()}ing Simulation {j} [m/s]')
@@ -382,6 +392,40 @@ def compute_scores(system_fi, cases, simulation_results):
     return scores
 
 
+def compute_errors(system_fi, cases, simulation_results):
+    case_vals = []
+    sim_vals = []
+    turbine_vals = []
+    rel_error_vals = []
+    # for each downstream turbine
+    for i, ds_idx in enumerate(system_fi.downstream_turbine_indices):
+        
+        # compute the rmse of the turbine effective wind speed error for each simulation
+        # turbine_scores = []
+        for case_idx, sim_idx, sim in simulation_results:
+            y_true = sim['true'][:, i]
+            y_pred_abs = sim['modeled'][:, i] + sim['pred'][:, i]
+            rel_error = list(((y_pred_abs - y_true) / y_true) * 100)
+            
+            case_vals += [case_idx] * len(rel_error)
+            sim_vals += [sim_idx] * len(rel_error)
+            turbine_vals += [ds_idx] * len(rel_error)
+            rel_error_vals += rel_error
+    
+    errors = pd.DataFrame(data={
+        'Case': case_vals,
+        'max_training_size': [cases[case_idx]['max_training_size'] for case_idx in case_vals],
+        'kernel': [cases[case_idx]['kernel'] for case_idx in case_vals],
+        'noise_std': [cases[case_idx]['noise_std'] for case_idx in case_vals],
+        'k_delay': [cases[case_idx]['k_delay'] for case_idx in case_vals],
+        'batch_size': [cases[case_idx]['batch_size'] for case_idx in case_vals],
+        'Simulation': sim_vals,
+        'Turbine': turbine_vals,
+        'rel_error': rel_error_vals,
+    })
+    errors.dropna(axis=0, how='any', inplace=True)
+    return errors
+
 def plot_wind_farm(system_fi):
     farm_fig, farm_ax = plt.subplots(1, 1)
     hor_plane = system_fi.get_hor_plane()
@@ -418,7 +462,7 @@ def generate_scores_table(scores_df, save_dir):
     # \end{tabular}
     
     captions = [
-    'Scores of the \\ac{GP}-Predicted vs. True Effective Velocities for Different Learning Parameters'
+    r'Scores of the \ac{GP}-Predicted vs. True Rotor-Averaged Wind Velocities for Different Learning Parameters'
     ]
     
     labels = [
@@ -430,15 +474,16 @@ def generate_scores_table(scores_df, save_dir):
         export_df = pd.DataFrame(scores_df)
         for row_idx, row in enumerate(export_df['kernel']):
             if 'RBF' in row.__str__():
-                scores_df['kernel'].iloc[row_idx] = r"SE"
+                export_df['kernel'].iloc[row_idx] = r"SE"
             elif 'Matern' in row.__str__():
-                scores_df['kernel'].iloc[row_idx] = r"Mat\'ern"
+                export_df['kernel'].iloc[row_idx] = r"Mat\'ern"
         
         # colour lowest rmse with lightest gray, highest with darkest gray
         for row_idx, row in export_df.iterrows():
-            scores_df['rmse'].iloc[row_idx] = r'\cellcolor{Gray' + f'{10 - row_idx}' + r'}' + format(scores_df["rmse"].iloc[row_idx], '.3f')
-            scores_df['mean_rel_error'].iloc[row_idx] = format(scores_df["mean_rel_error"].iloc[row_idx], '.3f') + r'$\%$'
-            scores_df['max_rel_error'].iloc[row_idx] = format(scores_df["max_rel_error"].iloc[row_idx], '.3f') + "$\%$"
+            export_df['rmse'].loc[row_idx] = r'\cellcolor{Gray' + f'{10 - export_df.index.to_list().index(row_idx)}' + r'}' \
+                                             + format(export_df["rmse"].loc[row_idx], '.3f')
+            export_df['mean_rel_error'].loc[row_idx] = format(export_df["mean_rel_error"].loc[row_idx], '.3f') + r'$\%$'
+            export_df['max_rel_error'].loc[row_idx] = format(export_df["max_rel_error"].loc[row_idx], '.3f') + "$\%$"
         
         # Rename features in Candidate Function column
         rename_mapping = {
@@ -452,13 +497,15 @@ def generate_scores_table(scores_df, save_dir):
             # 'mean_rel_error': r'$\bar{e}$',
             # 'max_rel_error': r'$e^\star$'
         }
+        print(export_df.iloc[0])
         export_df.drop(columns=['mean_rel_error', 'max_rel_error'], inplace=True)
-        export_df = scores_df.rename(columns=rename_mapping)
         
         # reorder columns
-        cols = [rename_mapping[col] for col in ['max_training_size', 'kernel', 'noise_std', 'k_delay', 'batch_size',
-                                                'rmse', 'r2']] #, 'mean_rel_error', 'max_rel_error']]
+        cols = ['max_training_size', 'kernel', 'noise_std', 'k_delay', 'batch_size',
+                                                'rmse', 'r2']
         export_df = export_df[cols]
+        
+        export_df = export_df.rename(columns=rename_mapping)
         
         # for old, new in rename_mapping.items():
             # scores_df['Candidate Function'] = scores_df['Candidate Function'].str.replace(old, new)
@@ -472,3 +519,48 @@ def generate_scores_table(scores_df, save_dir):
                              float_format='%.3f',
                              caption=caption, label=label,
                              position='!ht', escape=False, index=False)
+
+
+def generate_errors_table(errors_df, save_dir, best_case_idx):
+    
+    captions = [
+        r'Relative Error Metrics of the \ac{GP}-Predicted vs. True Rotor-Averaged Wind Velocities for Case ' + str(best_case_idx + 1)
+    ]
+    
+    labels = [
+        'tab:rel_error'
+    ]
+    
+    for caption, label in zip(captions, labels):
+        
+        export_df = pd.DataFrame(errors_df)
+        
+        # colour lowest mean error with lightest gray, highest with darkest gray
+        for row_idx, row in export_df.iterrows():
+            export_df['mean_rel_error'].loc[row_idx] = r'\cellcolor{Gray' \
+                                                       + f'{len(export_df.index) - export_df.index.to_list().index(row_idx)}' + r'}' \
+                                                       + r'$' + format(export_df["mean_rel_error"].loc[row_idx], '.3f') +  r'$'
+            export_df['max_rel_error'].loc[row_idx] = r'$' + format(export_df["max_rel_error"].loc[row_idx], '.3f') +  r'$'
+        
+        # Rename features in Candidate Function column
+        rename_mapping = {
+            'mean_rel_error': r'$\bar{\epsilon}_d$ [$\%$]',
+            'max_rel_error': r'$\epsilon^\star_d$ [$\%$]'
+        }
+
+        # reorder columns
+        cols = ['mean_rel_error', 'max_rel_error']
+        export_df = export_df[cols]
+        export_df = export_df.rename(columns=rename_mapping)
+        
+        # for old, new in rename_mapping.items():
+        # scores_df['Candidate Function'] = scores_df['Candidate Function'].str.replace(old, new)
+        export_df.reset_index(level=0, inplace=True)
+        export_df.sort_values(by='Turbine', inplace=True)
+        print(export_df)
+        
+        with open(os.path.join(save_dir, 'rel_errors.tex'), 'w') as fp:
+            export_df.to_latex(buf=fp,
+                               float_format='%.3f',
+                               caption=caption, label=label,
+                               position='!ht', escape=False, index=False)
