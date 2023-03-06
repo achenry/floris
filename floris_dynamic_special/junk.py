@@ -297,3 +297,122 @@ def add_data(self, measurements_df, system_fi, k_delay=GP_CONSTANTS['K_DELAY'], 
     #             }
     #
     #     return time, X_ts, y_ts
+    
+    
+    ## scaling
+
+# add noise to Turbine Wind Speed measurements
+if scalar_dir is None or not os.path.exists(scalar_dir) or train_offline:
+	noisy_measurements_df = add_gaussian_noise(system_fi, full_offline_measurements_df, std=noise_std)
+	# simulate modeled effective wind speeds at downstream turbines for measurements
+	
+	if GP_CONSTANTS['MODEL_TYPE'] == 'error':
+		# initialize to steady-state
+		model_fi.floris.farm.flow_field.mean_wind_speed = noisy_measurements_df.loc[0, 'FreestreamWindSpeed']
+		model_fi.reinitialize_flow_field(
+			wind_speed=noisy_measurements_df.loc[0, 'FreestreamWindSpeed'],
+			wind_direction=noisy_measurements_df.loc[0, 'FreestreamWindDir'])
+		model_fi.calculate_wake(
+			yaw_angles=[noisy_measurements_df.loc[0, f'YawAngles_{t_idx}']
+			            for t_idx in model_fi.turbine_indices],
+			axial_induction=[noisy_measurements_df.loc[0, f'AxIndFactors_{t_idx}']
+			                 for t_idx in model_fi.turbine_indices])
+		
+		y_modeled = []
+		for k in noisy_measurements_df.index:
+			sim_time = noisy_measurements_df.loc[k, 'Time']
+			model_fi.floris.farm.flow_field.mean_wind_speed = noisy_measurements_df.loc[k, 'FreestreamWindSpeed']
+			model_fi.reinitialize_flow_field(
+				wind_speed=noisy_measurements_df.loc[k, 'FreestreamWindSpeed'],
+				wind_direction=noisy_measurements_df.loc[k, 'FreestreamWindDir'],
+				sim_time=sim_time)
+			model_fi.calculate_wake(
+				yaw_angles=[noisy_measurements_df.loc[k, f'YawAngles_{t_idx}']
+				            for t_idx in model_fi.turbine_indices],
+				axial_induction=[noisy_measurements_df.loc[k, f'AxIndFactors_{t_idx}']
+				                 for t_idx in model_fi.turbine_indices],
+				sim_time=sim_time)
+			y_modeled = y_modeled + [[model_fi.floris.farm.turbines[gp.turbine_index].average_velocity for gp in gprs]]
+		
+		y_modeled = np.vstack(y_modeled)
+	# noisy_measurements_df[f'TurbineWindSpeeds_{gp.turbine_index}'].to_numpy()
+	else:
+		y_modeled = np.zeros(len(noisy_measurements_df.index), len(gprs))
+
+gp.y_scaler = MinMaxScaler()
+y_range = [[min(UPSTREAM_WIND_SPEED_TEST_POINTS)], [max(UPSTREAM_WIND_SPEED_TEST_POINTS)]]
+
+gp.y_scaler.fit(y_range)
+
+if scalar_dir is None or not os.path.exists(scalar_dir) or train_offline:
+	k_to_add, effective_dk, reduced_effective_dk, history_exists = \
+		gp.check_history(noisy_measurements_df, system_fi, k_delay=k_delay, dt=GP_CONSTANTS['DT'])
+	
+	# print(noisy_measurements_df.index[-1], effective_dk, gp.turbine_index)
+	
+	if not history_exists:
+		continue
+	
+	# shuffle order to give random data points to GP, then truncate to number of data points needed
+	shuffle_idx = list(k_to_add.index)
+	np.random.shuffle(shuffle_idx)
+	shuffle_idx = shuffle_idx[:max_training_size]
+	
+	# compute the base model values for the wake, given all of the freestream wind speeds, yaw angles and axial induction factors over time for each time-series dataset
+	X_train_new, y_train_new, _ = gp.prepare_data(noisy_measurements_df, k_to_add.loc[shuffle_idx],
+	                                              reduced_effective_dk.loc[shuffle_idx],
+	                                              y_modeled=y_modeled[shuffle_idx, gp_idx],
+	                                              k_delay=k_delay)
+	
+	if train_offline:
+		gp.add_data(X_train_new, y_train_new, k_to_add.loc[shuffle_idx], is_online=False)
+		
+		# Fit data
+		gp.fit()
+
+elif scalar_dir is not None and os.path.exists(scalar_dir):
+	with open(os.path.join(scalar_dir, f'X_scaler_case{case_idx}_gp{gp_idx}'), 'rb') as fp:
+		gp.X_scaler = pickle.load(fp)
+	
+	gp.X_scaler.mean_ = np.zeros((gp.n_inputs,))
+	gp.X_scaler.var_ = np.ones((gp.n_inputs,))
+	gp.X_scaler.scale_ = np.ones((gp.n_inputs,))
+	
+	with open(os.path.join(scalar_dir, f'y_scaler_case{case_idx}_gp{gp_idx}'), 'rb') as fp:
+		gp.y_scaler = pickle.load(fp)
+	
+	gp.y_scaler.mean_ = np.zeros((gp.n_outputs,))
+	gp.y_scaler.var_ = np.ones((gp.n_outputs,))
+	gp.y_scaler.scale_ = np.ones((gp.n_outputs,))
+
+X_test_indices = np.random.randint([N_TEST_POINTS_PER_COORD for l in gp.input_labels],
+                                   size=(n_test_points, len(gp.input_labels)))
+
+X_test = []
+for l_idx, l in enumerate(gp.input_labels):
+	if 'AxIndFactors' in l:
+		# X_test.append(AX_IND_FACTOR_TEST_POINTS[X_test_indices[:, l_idx]])
+		test_points = np.linspace(X_current[:, l_idx] - AX_IND_FACTOR_INC,
+		                          X_current[:, l_idx] + AX_IND_FACTOR_INC,
+		                          N_TEST_POINTS_PER_COORD)
+		X_test.append(test_points[X_test_indices[:, l_idx]])
+	elif 'YawAngles' in l:
+		# X_test.append(YAW_ANGLE_TEST_POINTS[X_test_indices[:, l_idx]])
+		test_points = np.linspace(X_current[:, l_idx] - YAW_ANGLE_INC,
+		                          X_current[:, l_idx] + YAW_ANGLE_INC,
+		                          N_TEST_POINTS_PER_COORD)
+		X_test.append(test_points[X_test_indices[:, l_idx]])
+	elif 'TurbineWindSpeeds' in l:
+		# X_test.append(UPSTREAM_WIND_SPEED_TEST_POINTS[X_test_indices[:, l_idx]])
+		test_points = np.linspace(X_current[:, l_idx] - TURBINE_WIND_SPEED_INC,
+		                          X_current[:, l_idx] + TURBINE_WIND_SPEED_INC,
+		                          N_TEST_POINTS_PER_COORD)
+		X_test.append(test_points[X_test_indices[:, l_idx]])
+	elif 'FreestreamWindDir' in l:
+		# X_test.append(UPSTREAM_WIND_DIR_TEST_POINTS[X_test_indices[:, l_idx]])
+		test_points = np.linspace(X_current[:, l_idx] - FREESTREAM_WIND_DIR_INC,
+		                          X_current[:, l_idx] + FREESTREAM_WIND_DIR_INC,
+		                          N_TEST_POINTS_PER_COORD)
+		X_test.append(test_points[X_test_indices[:, l_idx]])
+
+gp.X_test = gp.X_scaler.transform(np.transpose(X_test))

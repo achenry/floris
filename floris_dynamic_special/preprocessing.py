@@ -35,6 +35,20 @@ def get_paths(save_dir, df_indices):
             break
     return sorted(paths)
 
+def get_df_paths(df_indices, ts_data_dir, proportion_training_data):
+
+    csv_paths = get_paths(ts_data_dir, df_indices=df_indices)
+    # n_training_datasets = int(np.floor(len(csv_paths) * proportion_training_data))
+    # full_idx = np.arange(len(csv_paths))
+    # np.random.shuffle(full_idx)
+    # training_idx = full_idx[:n_training_datasets]
+    # testing_idx = full_idx[n_training_datasets:]
+    # df_paths = (os.path.join(ts_data_dir, p) for p in csv_paths)
+    # wake_field_dfs = collect_raw_data(ts_data_dir, csv_paths)
+    # wake_field_dfs = {'train': [wake_field_dfs[i] for i in training_idx],
+    #                   'test': [wake_field_dfs[i] for i in testing_idx]}
+    return csv_paths
+
 def read_datasets(p, paths):
     return pd.read_csv(paths[p], index_col=0)
 

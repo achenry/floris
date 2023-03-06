@@ -432,23 +432,7 @@ def get_base_model(floris_dir):
 
     return model_fi
 
-def get_dfs(df_indices, ts_data_dir, proportion_training_data=GP_CONSTANTS['PROPORTION_TRAINING_DATA']):
-    ## FETCH RAW DATA
-    # for dir in [DATA_DIR, FIG_DIR]:
-    #     if not os.path.exists(dir):
-    #         os.mkdir(dir)
 
-    csv_paths = get_paths(ts_data_dir, df_indices=df_indices)
-
-    wake_field_dfs = collect_raw_data(ts_data_dir, csv_paths)
-    n_training_datasets = int(np.floor(len(wake_field_dfs) * proportion_training_data))
-    full_idx = np.arange(len(wake_field_dfs))
-    np.random.shuffle(full_idx)
-    training_idx = full_idx[:n_training_datasets]
-    testing_idx = full_idx[n_training_datasets:]
-    wake_field_dfs = {'train': [wake_field_dfs[i] for i in training_idx],
-                      'test': [wake_field_dfs[i] for i in testing_idx]}
-    return wake_field_dfs
 
 
 def init_gprs(system_fi, kernel, k_delay,
