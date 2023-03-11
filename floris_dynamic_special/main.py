@@ -87,7 +87,7 @@ RUN_SIMULATIONS = args.run_simulations
 GENERATE_PLOTS  = args.generate_plots
 
 TMAX = 3600 #300 if DEBUG else 1200
-N_TOTAL_DATASETS = 100 if DEBUG else 500
+N_TOTAL_DATASETS = 9 if DEBUG else 500
 
 # construct case hierarchy
 KERNELS = [lambda: ConstantKernel() * RBF(),

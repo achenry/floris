@@ -11,19 +11,23 @@ def get_paths(save_dir, df_indices):
     n_total_paths = 0
     for root, _, files in os.walk(save_dir):
         for filename in files:
-            print(f'root={root}, filename={filename}')
+            # print(f'root={root}, filename={filename}')
             if 'case' in filename and 'csv' in filename:
                n_total_paths += 1
    
     print(f'n_total_paths={n_total_paths}')
     if type(df_indices) is int:
         n_cases = df_indices
-        df_indices = np.random.randint(n_total_paths, size=(n_cases,))
+        df_indices = np.arange(n_total_paths)
+        np.random.shuffle(df_indices)
+        df_indices = df_indices[:n_cases]#np.random.randint(n_total_paths, size=(n_cases,))
     elif hasattr(df_indices, '__len__'):
         n_cases = len(df_indices)
     elif df_indices is None:
         n_cases = -1
-        
+    
+    # print('n_cases', n_cases)
+    # print('df_indices', df_indices)
     for root, _, files in os.walk(save_dir):
         for filename in files:
             if len(paths) == n_cases:
