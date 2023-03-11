@@ -33,6 +33,8 @@ def get_paths(save_dir, df_indices):
                 paths.append(os.path.join(root, filename))
         if len(paths) == n_cases:
             break
+    
+    print('No. paths read', len(paths))
     return sorted(paths)
 
 def get_df_paths(df_indices, ts_data_dir, proportion_training_data):

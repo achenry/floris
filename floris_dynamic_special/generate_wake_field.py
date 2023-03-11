@@ -67,7 +67,7 @@ WS_TI = 0
 WD_TI = 0
 DEBUG = len(sys.argv) > 1 and sys.argv[1] == 'debug'
 print('debug', DEBUG)
-N_CASES = 9 if DEBUG else 500
+N_CASES = 100 if DEBUG else 500
 
 TOTAL_TIME = 3600
 
@@ -90,8 +90,8 @@ JENSEN_WAKE_COEFFS = [0.0365] #np.linspace(0.036, 0.038, 10, endpoint=True) #np.
 #      step_change([0], TOTAL_TIME, DT)
 #     ]
 # 12 values for a change every 5 minutes
-YAW_ANGLES = [step_change([0, 5, 10, 5, 10, 15, 10, 15, 20, 15, 10, 5], TOTAL_TIME, DT)] if DEBUG else \
-    [
+# YAW_ANGLES = [step_change([0, 5, 10, 5, 10, 15, 10, 15, 20, 15, 10, 5], TOTAL_TIME, DT)] if DEBUG else \
+YAW_ANGLES = [
         step_change([5, 10, 5, 10, 15, 10, 15, 20, 15, 10, 5, 0], TOTAL_TIME, DT), # all positive angles
         step_change([-15, -10, -5, 0, 5, 10, 15, 10, 5, 0, -5, -10], TOTAL_TIME, DT), # negative to positive angles
         step_change([-5, -10, -5, -10, -15, -10, -15, -20, -15, -10, -5, 0], TOTAL_TIME, DT) # all negative angles
@@ -106,13 +106,13 @@ YAW_ANGLES = [step_change([0, 5, 10, 5, 10, 15, 10, 15, 20, 15, 10, 5], TOTAL_TI
 #      step_change([0.22], TOTAL_TIME, DT)
 #     ]
 # 24 values for a change every 2.5 minutes
-AX_IND_FACTORS = [step_change([0.1, 0.2, 0.1, 0.2,
-                               0.3, 0.2, 0.3, 0.2,
-                               0.1, 0.2, 0.3, 0.2,
-                               0.1, 0.2, 0.3, 0.2,
-                               0.1, 0.2, 0.1, 0.2,
-                               0.3, 0.2, 0.3, 0.2], TOTAL_TIME, DT)] if DEBUG else \
-    [
+# AX_IND_FACTORS = [step_change([0.1, 0.2, 0.1, 0.2,
+#                                0.3, 0.2, 0.3, 0.2,
+#                                0.1, 0.2, 0.3, 0.2,
+#                                0.1, 0.2, 0.3, 0.2,
+#                                0.1, 0.2, 0.1, 0.2,
+#                                0.3, 0.2, 0.3, 0.2], TOTAL_TIME, DT)] if DEBUG else \
+AX_IND_FACTORS = [
      step_change([0.2, 0.25, 0.3, 0.25,
                   0.2, 0.25, 0.2, 0.25,
                   0.3, 0.25, 0.3, 0.25,
