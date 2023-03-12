@@ -210,6 +210,7 @@ def plot_score(system_fi, *dfs,
                          flierprops=dict(color=c1, markeredgecolor=c2),
                          medianprops=dict(color=c3, linewidth=lw)
                          )
+        score_ax[ax_idx].grid(visible=True, which='both', axis='y')
         score_ax[ax_idx].set_ylabel(score_label, rotation=0, ha='right', labelpad=15, y=0.8)
         # score_ax[ax_idx].set(xlabel='Turbine', xticklabels=[f'$T{t}$' for t in system_fi.downstream_turbine_indices])
     # score_fig.show()
@@ -282,6 +283,7 @@ def plot_ts(all_ds_indices, ds_indices, simulation_results, time):
             #                            color=c1)
 
             ts_ax[row_idx, col_idx].set(ylim=(min_val, max_val))
+            ts_ax[row_idx, col_idx].grid(visible=True, which='both', axis='y')
             # ts_ax[row_idx, col_idx].plot([training_end_idx, training_end_idx], [min_val, max_val], linestyle='--',
             #                         color=c1)
 
