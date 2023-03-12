@@ -197,7 +197,7 @@ def plot_score(system_fi, *dfs,
     c1 = 'orange'
     c2 = 'green'
     c3 = '#1f77b4'
-    lw = 3
+    lw = 5
     
     for ax_idx, (score_col, score_label) in enumerate(score_type):
         df = dfs[ax_idx]
@@ -286,7 +286,7 @@ def plot_ts(all_ds_indices, ds_indices, simulation_results, time):
             ts_ax[row_idx, col_idx].grid(visible=True, which='both', axis='y')
             # ts_ax[row_idx, col_idx].plot([training_end_idx, training_end_idx], [min_val, max_val], linestyle='--',
             #                         color=c1)
-
+s
             # ts_ax[ax_idx].set(
             #     title=f'Downstream Turbine Effective Wind Speeds for {dataset_type.capitalize()}ing Simulation {j} [m/s]')
 
