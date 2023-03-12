@@ -528,8 +528,8 @@ if __name__ == '__main__':
         system_fi = get_system_info(FLORIS_DIR)
         ## FETCH SIMULATION RESULTS
         def get_simulation_results(filepath, i):
-            case_idx = int(filepath[filepath.index('case') + len('case') + 1])
-            sim_idx = int(filepath[filepath.index('df') + len('df') + 1])
+            case_idx = int(filepath.split('case-')[-1].split('_')[0])
+            sim_idx = int(filepath.split('df-')[-1].split('_')[0])
             with open(filepath, 'rb') as fp:
                 return case_idx, sim_idx, pickle.load(fp)
             
@@ -592,6 +592,8 @@ if __name__ == '__main__':
         
         scores_case_df = best_case_scores_df.groupby('Simulation')['rmse'].median().sort_values(ascending=True)
         best_sim_indices = scores_case_df.index[:n_ts_plots]
+        
+        print('best_sim_indices', best_sim_indices)
 
         # print('Mean Wind Speeds for Simulations', np.round([np.mean(simulation_results[i][2]['true'][:, 0]) for i in best_sim_indices]))
         print('Simulation Freestream Wind Params')
@@ -612,6 +614,7 @@ if __name__ == '__main__':
         time_ts = np.arange(0, TMAX, GP_DT)
         best_case_simulation_results = [(sim_res[1], sim_res[2]) for sim_res in simulation_results
                                         if sim_res[0] == best_case_idx and sim_res[1] in best_sim_indices]
+        # TODO there seems to be more than 2
         ts_fig = plot_ts(system_fi.downstream_turbine_indices, ds_indices,
                          best_case_simulation_results, time_ts)
         ts_fig.show()

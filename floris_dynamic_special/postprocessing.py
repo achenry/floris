@@ -212,6 +212,9 @@ def plot_score(system_fi, *dfs,
                          )
         score_ax[ax_idx].grid(visible=True, which='both', axis='y')
         score_ax[ax_idx].set_ylabel(score_label, rotation=0, ha='right', labelpad=15, y=0.8)
+        
+        # TODO set ylim to be some fraction of IQR
+        score_ax[ax_idx.set(ylim=(None, None))]
         # score_ax[ax_idx].set(xlabel='Turbine', xticklabels=[f'$T{t}$' for t in system_fi.downstream_turbine_indices])
     # score_fig.show()
     
