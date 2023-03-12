@@ -592,6 +592,7 @@ if __name__ == '__main__':
         
         scores_case_df = best_case_scores_df.groupby('Simulation')['rmse'].median().sort_values(ascending=True)
         best_sim_indices = scores_case_df.index[:n_ts_plots]
+        best_sim_indices = np.random.choice(pd.unique(best_case_scores_df['Simulation']), n_ts_plots)
         
         print('best_sim_indices', best_sim_indices)
 
@@ -606,11 +607,12 @@ if __name__ == '__main__':
         score_fig.savefig(os.path.join(FIG_DIR, f'score.png'))
         
         if len(system_fi.floris.farm.turbines) == 9:
-            ds_indices = [7, 8]
+            ds_indices = [4, 7]#[7, 8]
         else:
             # for 2 turbine farm
             ds_indices = [1]
         
+        # TODO plot ax ind factor and yaw angles of all upstream turbines for each df case
         time_ts = np.arange(0, TMAX, GP_DT)
         best_case_simulation_results = [(sim_res[1], sim_res[2]) for sim_res in simulation_results
                                         if sim_res[0] == best_case_idx and sim_res[1] in best_sim_indices]
@@ -640,9 +642,11 @@ if __name__ == '__main__':
         # error_ts_fig.show()
         # error_ts_fig.savefig(os.path.join(FIG_DIR, f'error_ts.png'))
         
-        # farm_fig = plot_wind_farm(system_fi)
-        # farm_fig.show()
-        # farm_fig.savefig(os.path.join(FIG_DIR, f'wind_farm.png'))
+        system_fi.reinitialize_flow_field(wind_speed=10, wind_direction=260)
+        system_fi.calculate_wake(yaw_angles=[5, 10, 5, 10, 15, 10, 15, 20, 15])
+        farm_fig = plot_wind_farm(system_fi)
+        farm_fig.show()
+        farm_fig.savefig(os.path.join(FIG_DIR, f'wind_farm.png'))
 
         # def plot_score_evolution():
         #     """

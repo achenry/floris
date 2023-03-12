@@ -93,8 +93,8 @@ JENSEN_WAKE_COEFFS = [0.0365] #np.linspace(0.036, 0.038, 10, endpoint=True) #np.
 # YAW_ANGLES = [step_change([0, 5, 10, 5, 10, 15, 10, 15, 20, 15, 10, 5], TOTAL_TIME, DT)] if DEBUG else \
 YAW_ANGLES = [
         step_change([5, 10, 5, 10, 15, 10, 15, 20, 15, 10, 5, 0], TOTAL_TIME, DT), # all positive angles
-        step_change([-15, -10, -5, 0, 5, 10, 15, 10, 5, 0, -5, -10], TOTAL_TIME, DT), # negative to positive angles
-        step_change([-5, -10, -5, -10, -15, -10, -15, -20, -15, -10, -5, 0], TOTAL_TIME, DT) # all negative angles
+        step_change([15, 10, 5, 0, 5, 10, 15, 10, 5, 0, 5, 10], TOTAL_TIME, DT), # negative to positive angles
+        step_change([5, 10, 5, 10, 15, 10, 15, 20, 15, 10, 5, 0], TOTAL_TIME, DT) # all negative angles
     ]
 # AX_IND_FACTORS = [step_change([0.11, 0.22, 0.22, 0.33], TOTAL_TIME, DT)] if DEBUG else \
 #     [
