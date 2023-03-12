@@ -584,9 +584,9 @@ if __name__ == '__main__':
         best_case_idx = scores_by_case_df.index[0]
         best_case_scores_df = scores_df.loc[scores_df['Case'] == best_case_idx]
         best_case_errors_df = errors_df.loc[errors_df['Case'] == best_case_idx]
-        best_case_scores_df.to_csv(os.path.join(FIG_DIR, 'best_case_scores.csv'))
-        best_case_errors_df.to_csv(os.path.join(FIG_DIR, 'best_case_errors.csv'))
-        
+        # best_case_scores_df.to_csv(os.path.join(FIG_DIR, 'best_case_scores.csv'))
+        # best_case_errors_df.to_csv(os.path.join(FIG_DIR, 'best_case_errors.csv'))
+        #
         best_errors_df = best_case_scores_df.groupby('Turbine')[['mean_rel_error', 'max_rel_error']].max().sort_values(by='mean_rel_error', ascending=True)
         generate_errors_table(best_errors_df, FIG_DIR, best_case_idx)
         
@@ -598,8 +598,8 @@ if __name__ == '__main__':
         # print('Mean Wind Speeds for Simulations', np.round([np.mean(simulation_results[i][2]['true'][:, 0]) for i in best_sim_indices]))
         print('Simulation Freestream Wind Params')
         # print([wake_field_dfs['train'][i][['FreestreamWindSpeed', 'FreestreamWindDir']].mean() for i in best_sim_indices])
-        print('Simulation Freestream Wind Speed', [simulation_results[i][2]['mean_wind_speed'] for i in best_sim_indices])
-        print('Simulation Freestream Wind Dir', [simulation_results[i][2]['mean_wind_dir'] for i in best_sim_indices])
+        print('Simulation Freestream Wind Speed', [sim_res[2]['mean_wind_speed'] for sim_res in simulation_results if sim_res[1] in best_sim_indices])
+        print('Simulation Freestream Wind Dir', [sim_res[2]['mean_wind_dir'] for sim_res in simulation_results if sim_res[1] in best_sim_indices])
 
         score_fig = plot_score(system_fi, best_case_scores_df, best_case_errors_df)
         score_fig.show()
@@ -614,7 +614,7 @@ if __name__ == '__main__':
         time_ts = np.arange(0, TMAX, GP_DT)
         best_case_simulation_results = [(sim_res[1], sim_res[2]) for sim_res in simulation_results
                                         if sim_res[0] == best_case_idx and sim_res[1] in best_sim_indices]
-        # TODO there seems to be more than 2
+         
         ts_fig = plot_ts(system_fi.downstream_turbine_indices, ds_indices,
                          best_case_simulation_results, time_ts)
         ts_fig.show()

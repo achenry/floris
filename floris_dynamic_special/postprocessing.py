@@ -203,7 +203,7 @@ def plot_score(system_fi, *dfs,
         df = dfs[ax_idx]
         x = df.sort_values(by='Turbine')[['Turbine', score_col]]
         vals = [x.loc[x['Turbine'] == t][score_col].to_list() for t in system_fi.downstream_turbine_indices]
-        score_ax[ax_idx].boxplot(x=vals, patch_artist=True,
+        bxplt = score_ax[ax_idx].boxplot(x=vals, patch_artist=True,
                          boxprops=dict(facecolor='white', color=c1, linewidth=lw), # facecolor
                          capprops=dict(color=c2, linewidth=lw),
                          whiskerprops=dict(color=c2, linewidth=lw),
@@ -214,7 +214,32 @@ def plot_score(system_fi, *dfs,
         score_ax[ax_idx].set_ylabel(score_label, rotation=0, ha='right', labelpad=15, y=0.8)
         
         # TODO set ylim to be some fraction of IQR
-        score_ax[ax_idx.set(ylim=(None, None))]
+        positive_outlier_vals = [fl.get_ydata()[fl.get_ydata() > 0] for fl in bxplt['fliers']]
+        negative_outlier_vals = [fl.get_ydata()[fl.get_ydata() < 0] for fl in bxplt['fliers']]
+        positive_whisker_vals = [np.concatenate([bxplt['whiskers'][int(i * 2)].get_ydata()[bxplt['whiskers'][int(i * 2)].get_ydata() > 0],
+                                bxplt['whiskers'][int((i * 2) + 1)].get_ydata()[bxplt['whiskers'][(i * 2) + 1].get_ydata() > 0]]) for i in range(len(bxplt['fliers']))]
+        negative_whisker_vals = [
+            np.concatenate([bxplt['whiskers'][int(i * 2)].get_ydata()[bxplt['whiskers'][int(i * 2)].get_ydata() < 0],
+                            bxplt['whiskers'][int((i * 2) + 1)].get_ydata()[
+                                bxplt['whiskers'][(i * 2) + 1].get_ydata() < 0]]) for i in range(len(bxplt['fliers']))]
+
+        # for i, (pos_vals, neg_vals) in enumerate(zip(positive_outlier_vals, negative_outlier_vals)):
+        #     if len(pos_vals) == 0:
+        #         # no outliers, use whiskers instead
+        #         positive_outlier_vals[i] = \
+        #         np.concatenate([bxplt['whiskers'][int(i * 2)].get_ydata()[bxplt['whiskers'][int(i * 2)].get_ydata() > 0],
+        #                         bxplt['whiskers'][int((i * 2) + 1)].get_ydata()[bxplt['whiskers'][(i * 2) + 1].get_ydata() > 0]])
+        #     if len(neg_vals) == 0:
+        #         # no outliers, use whiskers instead
+        #         negative_outlier_vals[i] =  \
+        #         np.concatenate([bxplt['whiskers'][int(i * 2)].get_ydata()[bxplt['whiskers'][int(i * 2)].get_ydata() < 0],
+        #                         bxplt['whiskers'][int((i * 2) + 1)].get_ydata()[bxplt['whiskers'][(i * 2) + 1].get_ydata() < 0]])
+        
+        first_positive_outlier_val = [min(ol) if len(ol) else (max(wh) if len(wh) else np.infty) for ol, wh in zip(positive_outlier_vals, positive_whisker_vals)]
+        first_negative_outlier_val = [max(ol) if len(ol) else (min(wh) if len(wh) else -np.infty) for ol, wh in zip(negative_outlier_vals, negative_whisker_vals)]
+        ymin = np.min(first_negative_outlier_val) * 1.1
+        ymax = np.max(first_positive_outlier_val) * 1.1
+        score_ax[ax_idx].set(ylim=(ymin if ymin > -np.infty else None, ymax if ymax < np.infty else None))
         # score_ax[ax_idx].set(xlabel='Turbine', xticklabels=[f'$T{t}$' for t in system_fi.downstream_turbine_indices])
     # score_fig.show()
     
@@ -237,7 +262,7 @@ def plot_ts(all_ds_indices, ds_indices, simulation_results, time):
     """
     
     ts_fig, ts_ax = plt.subplots(len(simulation_results), len(ds_indices),
-                                 sharex=True, sharey=True)
+                                 sharex=True)
      
     c1 = '#1f77b4'
     
@@ -268,12 +293,14 @@ def plot_ts(all_ds_indices, ds_indices, simulation_results, time):
                                                  y_pred_abs - sim_data['std'][:, ds_idx],
                                                  y_pred_abs + sim_data['std'][:, ds_idx],
                                                  alpha=0.5, label=f'Predicted Std. Dev.', color='lightgreen')
-
-            min_val = min(min_val, np.nanmin([ln.get_ydata() for ln in ts_ax[row_idx, col_idx].get_lines()]))
-            max_val = max(max_val, np.nanmax([ln.get_ydata() for ln in ts_ax[row_idx, col_idx].get_lines()]))
+            min_val = np.nanmin([np.concatenate([y_mod, y_true, y_pred_abs])]) / 1.1
+            max_val = np.nanmax([np.concatenate([y_mod, y_true, y_pred_abs])]) * 1.1
+            ts_ax[row_idx, col_idx].set(ylim=(min_val, max_val))
+            # min_val = min(min_val, np.nanmin([ln.get_ydata() for ln in ts_ax[row_idx, col_idx].get_lines()]))
+            # max_val = max(max_val, np.nanmax([ln.get_ydata() for ln in ts_ax[row_idx, col_idx].get_lines()]))
             
-    min_val = max(min_val, WIND_SPEED_RANGE[0] * 0.5)
-    max_val = min(max_val, WIND_SPEED_RANGE[1])
+    # min_val = max(min_val, WIND_SPEED_RANGE[0] * 0.5)
+    # max_val = min(max_val, WIND_SPEED_RANGE[1])
     
     for row_idx, (sim_idx, sim_data) in enumerate(simulation_results):
         for col_idx, ds in enumerate(ds_indices):
@@ -285,7 +312,7 @@ def plot_ts(all_ds_indices, ds_indices, simulation_results, time):
             # ts_ax[row_idx, col_idx].plot([training_start_idx, training_start_idx], [min_val, max_val], linestyle='--',
             #                            color=c1)
 
-            ts_ax[row_idx, col_idx].set(ylim=(min_val, max_val))
+            # ts_ax[row_idx, col_idx].set(ylim=(min_val, max_val))
             ts_ax[row_idx, col_idx].grid(visible=True, which='both', axis='y')
             # ts_ax[row_idx, col_idx].plot([training_end_idx, training_end_idx], [min_val, max_val], linestyle='--',
             #                         color=c1)
