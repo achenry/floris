@@ -178,7 +178,7 @@ def plot_error_ts(all_ds_indices, grouped_ds_indices, simulation_results, time):
     return error_fig
 
 def plot_score(system_fi, *dfs,
-               score_type=[('rmse', '$RMSE_d$\n[m/s]'), ('rel_error', '$\hat{\epsilon}$ [$\\%$]')]):
+               score_type=[('rmse', '$RMSE_d$\n[m/s]'), ('rel_error', '$\hat{\epsilon}_d$ [$\\%$]')]):
     """
    RMSE mean and std (true turbine effective wind speed vs. GP estimate) over all simulations for
     each downstream turbine
@@ -261,8 +261,7 @@ def plot_ts(all_ds_indices, ds_indices, simulation_results, time):
 
     """
     
-    ts_fig, ts_ax = plt.subplots(len(simulation_results), len(ds_indices),
-                                 sharex=True)
+    ts_fig, ts_ax = plt.subplots(len(simulation_results), len(ds_indices), sharex=True)
      
     c1 = '#1f77b4'
     
@@ -488,7 +487,7 @@ def generate_scores_table(scores_df, save_dir):
     #     5 &$10$ & SE &$0.01$ & $8$ & $1$ & \ \
     #     6 &$10$ & SE &$0.001$ & $4$ & $1$ & \ \
     #     7 &$10$ & SE &$0.1$ & $4$ & $1$ & \ \
-    #     8 &$5$ & SE &$0.01$ & $4$ & $1$ & \ \
+    #     8 &$5$ & SE &$0.01$ & $4$ & $1$ & \ \\
     #     9 &$20$ & SE &$0.01$ & $4$ & $1$ & \ \
     #     10 &$10$ & Mat\'ern&$0.01$&$4$&$1$&
     # \end{tabular}

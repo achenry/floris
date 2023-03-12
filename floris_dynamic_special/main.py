@@ -606,7 +606,7 @@ if __name__ == '__main__':
         score_fig.savefig(os.path.join(FIG_DIR, f'score.png'))
         
         if len(system_fi.floris.farm.turbines) == 9:
-            ds_indices = [4, 7]
+            ds_indices = [7, 8]
         else:
             # for 2 turbine farm
             ds_indices = [1]
