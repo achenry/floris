@@ -20,10 +20,24 @@ import sys
 from multiprocessing import Pool
 from CaseGen_General import CaseGen_General
 import matplotlib as mpl
-from sklearn.metrics import r2_score
-from itertools import product
+from postprocessing import plot_wind_farm
 
-FIGSIZE = (30, 21)
+FIGSIZE = (42, 21)
+COLOR_1 = 'darkgreen'
+COLOR_2 = 'indigo'
+BIG_FONT_SIZE = 70
+SMALL_FONT_SIZE = 66
+mpl.rcParams.update({'font.size': SMALL_FONT_SIZE,
+					 'axes.titlesize': BIG_FONT_SIZE,
+					 'figure.figsize': FIGSIZE,
+					 'legend.fontsize': SMALL_FONT_SIZE,
+					 'xtick.labelsize': SMALL_FONT_SIZE,
+					 'ytick.labelsize': SMALL_FONT_SIZE,
+                     'lines.linewidth': 4,
+					 'figure.autolayout': True,
+                     'lines.markersize': 10,
+                     'yaxis.labellocation': 'top'
+                     })
 
 mpl.rcParams.update({
 					 'figure.figsize': FIGSIZE,
@@ -229,8 +243,10 @@ def sim_func(case_idx, case):
     wd_ts['dev'] = (wd_ts['TI'] / 100) * wd_ts['mean']
     
     # define yaw angle time series
-    yaw_angles = DEFAULT_YAW_ANGLE * np.ones((int(TOTAL_TIME / DT), n_turbines))
-    ai_factors = DEFAULT_AX_IND_FACTOR * np.ones((int(TOTAL_TIME / DT), n_turbines))
+    yaw_angles = np.nan * np.ones((int(TOTAL_TIME / DT), n_turbines))
+    ai_factors = np.nan * np.ones((int(TOTAL_TIME / DT), n_turbines))
+    yaw_angles[:, downstream_turbine_indices] = (270 - wd_ts['mean']) * np.ones((int(TOTAL_TIME / DT), n_downstream_turbines))
+    ai_factors[:, downstream_turbine_indices] = DEFAULT_AX_IND_FACTOR * np.ones((int(TOTAL_TIME / DT), n_downstream_turbines))
     yaw_angles[:, upstream_turbine_indices] = np.hstack([case[f'yaw_angles_{t}'] for t in upstream_turbine_indices]) # np.tile([case[f'yaw_angles_{t}'] for t in upstream_turbine_indices], (int(TOTAL_TIME / DT), 1))
     ai_factors[:, upstream_turbine_indices] = np.hstack([case[f'ax_ind_factors_{t}'] for t in upstream_turbine_indices]) # np.tile([case[f'ax_ind_factors_{t}'] for t in upstream_turbine_indices], (int(TOTAL_TIME / DT), 1))
     
@@ -274,6 +290,9 @@ def sim_func(case_idx, case):
         fi_model.calculate_wake(yaw_angles=yaw_angles[tt], axial_induction=ai_factors[tt], sim_time=sim_time)
         
         if case_idx == 0 and False:
+            fi.turbine_indices = np.arange(n_turbines)
+            farm_fig = plot_wind_farm(fi)
+            farm_fig.show()
             horizontal_planes.append(fi.get_hor_plane(x_resolution=200, y_resolution=100, height=90.0)) # horizontal plane at hub-height
             y_planes.append(fi.get_y_plane(x_resolution=200, z_resolution=100, y_loc=0.0)) # vertical plane parallel to freestream wind direction
             cross_planes.append(fi.get_cross_plane(y_resolution=100, z_resolution=100, x_loc=630.0)) # vertical plane parallel to turbine disc plane  
@@ -368,7 +387,7 @@ def plot_ts(dfs, upstream_turbine_indices, downstream_turbine_indices):
         #     ax_ts[0].plot(time, us_turbine_wind_speeds[:, t_idx], label=f'US Turbine {t} Case {case_idx}')
         #     ax_ts[0].plot(time, us_turbine_wind_speeds_model[:, t_idx], label=f'US Turbine {t} Case {case_idx} Model', linestyle='--')
         #     ax_ts[2].plot(time, yaw_angles[:, t_idx], label=f'US Turbine {t} Case {case_idx}')
-        #     ax_ts[3].plott(time, ai_factors[:, t_idx], label=f'US Turbine {t} Case {case_idx}')
+        #     ax_ts[3].plot(time, ai_factors[:, t_idx], label=f'US Turbine {t} Case {case_idx}')
         
         for t_idx, t in enumerate(downstream_turbine_indices):
             ax_ts[case_idx].plot(time, ds_turbine_wind_speeds[:, t_idx], label=f'DS Turbine {t} Case {case_idx}',
