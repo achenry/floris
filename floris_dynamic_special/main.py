@@ -552,7 +552,10 @@ if __name__ == '__main__':
         
         # score_type = 'rmse'
         # turbine_sim_score is n_downstream_turbines X n_simulations matrix of scores
+        # for each case, simulation, turbine => RMSE, R2, median rel error, max rel error
         scores_df = compute_scores(system_fi, cases, simulation_results)
+        
+        
         errors_df = compute_errors(system_fi, cases, simulation_results)
 
         for case_idx, case in enumerate(cases):
@@ -570,7 +573,7 @@ if __name__ == '__main__':
             print(f'Score Std. Dev. over all Simulations averaged over Turbines '
                   f'= \n{case_scores.std()}')
          
-        scores_by_case_df = scores_df.groupby('Case')[['rmse', 'r2', 'mean_rel_error', 'max_rel_error']].median().sort_values(by='rmse', ascending=True)
+        scores_by_case_df = scores_df.groupby('Case')[['rmse', 'r2', 'median_rel_error', 'max_rel_error']].median().sort_values(by='rmse', ascending=True)
         scores_by_case_df['max_training_size'] = [cases[case_idx]['max_training_size'] for case_idx in scores_by_case_df.index]
         scores_by_case_df['kernel'] = [cases[case_idx]['kernel'] for case_idx in scores_by_case_df.index]
         scores_by_case_df['noise_std'] = [cases[case_idx]['noise_std'] for case_idx in scores_by_case_df.index]
@@ -584,10 +587,10 @@ if __name__ == '__main__':
         best_case_idx = scores_by_case_df.index[0]
         best_case_scores_df = scores_df.loc[scores_df['Case'] == best_case_idx]
         best_case_errors_df = errors_df.loc[errors_df['Case'] == best_case_idx]
-        # best_case_scores_df.to_csv(os.path.join(FIG_DIR, 'best_case_scores.csv'))
-        # best_case_errors_df.to_csv(os.path.join(FIG_DIR, 'best_case_errors.csv'))
+        best_case_scores_df.to_csv(os.path.join(FIG_DIR, 'best_case_scores.csv'))
+        best_case_errors_df.to_csv(os.path.join(FIG_DIR, 'best_case_errors.csv'))
         #
-        best_errors_df = best_case_scores_df.groupby('Turbine')[['mean_rel_error', 'max_rel_error']].max().sort_values(by='mean_rel_error', ascending=True)
+        best_errors_df = best_case_scores_df.groupby('Turbine')[['median_rel_error', 'max_rel_error']].max().sort_values(by='median_rel_error', ascending=True)
         generate_errors_table(best_errors_df, FIG_DIR, best_case_idx)
         
         scores_case_df = best_case_scores_df.groupby('Simulation')['rmse'].median().sort_values(ascending=True)
@@ -599,15 +602,17 @@ if __name__ == '__main__':
         # print('Mean Wind Speeds for Simulations', np.round([np.mean(simulation_results[i][2]['true'][:, 0]) for i in best_sim_indices]))
         print('Simulation Freestream Wind Params')
         # print([wake_field_dfs['train'][i][['FreestreamWindSpeed', 'FreestreamWindDir']].mean() for i in best_sim_indices])
-        print('Simulation Freestream Wind Speed', [sim_res[2]['mean_wind_speed'] for sim_res in simulation_results if sim_res[1] in best_sim_indices])
-        print('Simulation Freestream Wind Dir', [sim_res[2]['mean_wind_dir'] for sim_res in simulation_results if sim_res[1] in best_sim_indices])
+        print('Simulation Freestream Wind Speed', [sim_res[2]['mean_wind_speed'] for sim_res in simulation_results
+                                                   if sim_res[1] in best_sim_indices and sim_res[0] == best_case_idx])
+        print('Simulation Freestream Wind Dir', [sim_res[2]['mean_wind_dir'] for sim_res in simulation_results
+                                                 if sim_res[1] in best_sim_indices and sim_res[0] == best_case_idx])
 
         score_fig = plot_score(system_fi, best_case_scores_df, best_case_errors_df)
         score_fig.show()
         score_fig.savefig(os.path.join(FIG_DIR, f'score.png'))
         
         if len(system_fi.floris.farm.turbines) == 9:
-            ds_indices = [4, 7]#[7, 8]
+            ds_indices = [7, 8]#[7, 8]
         else:
             # for 2 turbine farm
             ds_indices = [1]
@@ -618,9 +623,14 @@ if __name__ == '__main__':
                                         if sim_res[0] == best_case_idx and sim_res[1] in best_sim_indices]
          
         ts_fig = plot_ts(system_fi.downstream_turbine_indices, ds_indices,
-                         best_case_simulation_results, time_ts)
+                         best_case_simulation_results, time_ts, figsize=FIGSIZE)
         ts_fig.show()
         ts_fig.savefig(os.path.join(FIG_DIR, f'time_series.png'))
+
+        full_ts_fig = plot_ts(system_fi.downstream_turbine_indices, system_fi.downstream_turbine_indices,
+                         best_case_simulation_results, time_ts, figsize=(FIGSIZE[0] * len(ds_indices) / 2, FIGSIZE[1]))
+        full_ts_fig.show()
+        full_ts_fig.savefig(os.path.join(FIG_DIR, f'full_time_series.png'))
        
         if COLLECT_TEST_VARIANCE:
             std_fig = plot_std_evolution(system_fi.downstream_turbine_indices, ds_indices,

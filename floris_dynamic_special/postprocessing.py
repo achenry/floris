@@ -203,6 +203,7 @@ def plot_score(system_fi, *dfs,
         df = dfs[ax_idx]
         x = df.sort_values(by='Turbine')[['Turbine', score_col]]
         vals = [x.loc[x['Turbine'] == t][score_col].to_list() for t in system_fi.downstream_turbine_indices]
+        # [np.concatenate(v) for v in vals]
         bxplt = score_ax[ax_idx].boxplot(x=vals, patch_artist=True,
                          boxprops=dict(facecolor='white', color=c1, linewidth=lw), # facecolor
                          capprops=dict(color=c2, linewidth=lw),
@@ -252,7 +253,7 @@ def plot_score(system_fi, *dfs,
     return score_fig
 
 
-def plot_ts(all_ds_indices, ds_indices, simulation_results, time):
+def plot_ts(all_ds_indices, ds_indices, simulation_results, time, figsize):
     """
    GP estimate, true value, noisy measurements of
     effective wind speeds of downstream turbines vs.
@@ -261,7 +262,7 @@ def plot_ts(all_ds_indices, ds_indices, simulation_results, time):
 
     """
     
-    ts_fig, ts_ax = plt.subplots(len(simulation_results), len(ds_indices), sharex=True)
+    ts_fig, ts_ax = plt.subplots(len(simulation_results), len(ds_indices), sharex=True, figsize=figsize)
      
     c1 = '#1f77b4'
     
@@ -381,7 +382,7 @@ def compute_scores(system_fi, cases, simulation_results):
     turbine_vals = []
     rmse_vals = []
     r2_vals = []
-    mean_rel_error_vals = []
+    median_rel_error_vals = []
     max_rel_error_vals = []
     # for each downstream turbine
     for i, ds_idx in enumerate(system_fi.downstream_turbine_indices):
@@ -394,7 +395,7 @@ def compute_scores(system_fi, cases, simulation_results):
             rmse = np.nanmean((y_true - y_pred_abs)**2)**0.5
             r2 = 1 - (np.nansum((y_true - y_pred_abs)**2) / np.nansum((y_true - np.nanmean(y_true))**2))
             rel_error = np.abs((y_pred_abs - y_true) / y_true) * 100
-            mean_rel_error = np.nanmean(rel_error)
+            median_rel_error = np.nanmedian(rel_error)
             max_rel_error = np.nanmax(rel_error)
 
             case_vals.append(case_idx)
@@ -402,21 +403,21 @@ def compute_scores(system_fi, cases, simulation_results):
             turbine_vals.append(ds_idx)
             rmse_vals.append(rmse)
             r2_vals.append(r2)
-            mean_rel_error_vals.append(mean_rel_error)
+            median_rel_error_vals.append(median_rel_error)
             max_rel_error_vals.append(max_rel_error)
         
     scores = pd.DataFrame(data={
         'Case': case_vals,
-        'max_training_size': [cases[case_idx]['max_training_size'] for case_idx in case_vals],
-        'kernel': [cases[case_idx]['kernel'] for case_idx in case_vals],
-        'noise_std': [cases[case_idx]['noise_std'] for case_idx in case_vals],
-        'k_delay': [cases[case_idx]['k_delay'] for case_idx in case_vals],
-        'batch_size': [cases[case_idx]['batch_size'] for case_idx in case_vals],
+        # 'max_training_size': [cases[case_idx]['max_training_size'] for case_idx in case_vals],
+        # 'kernel': [cases[case_idx]['kernel'] for case_idx in case_vals],
+        # 'noise_std': [cases[case_idx]['noise_std'] for case_idx in case_vals],
+        # 'k_delay': [cases[case_idx]['k_delay'] for case_idx in case_vals],
+        # 'batch_size': [cases[case_idx]['batch_size'] for case_idx in case_vals],
         'Simulation': sim_vals,
         'Turbine': turbine_vals,
          'rmse': rmse_vals,
          'r2': r2_vals,
-        'mean_rel_error': mean_rel_error_vals,
+        'median_rel_error': median_rel_error_vals,
         'max_rel_error': max_rel_error_vals
     })
 
@@ -445,11 +446,11 @@ def compute_errors(system_fi, cases, simulation_results):
     
     errors = pd.DataFrame(data={
         'Case': case_vals,
-        'max_training_size': [cases[case_idx]['max_training_size'] for case_idx in case_vals],
-        'kernel': [cases[case_idx]['kernel'] for case_idx in case_vals],
-        'noise_std': [cases[case_idx]['noise_std'] for case_idx in case_vals],
-        'k_delay': [cases[case_idx]['k_delay'] for case_idx in case_vals],
-        'batch_size': [cases[case_idx]['batch_size'] for case_idx in case_vals],
+        # 'max_training_size': [cases[case_idx]['max_training_size'] for case_idx in case_vals],
+        # 'kernel': [cases[case_idx]['kernel'] for case_idx in case_vals],
+        # 'noise_std': [cases[case_idx]['noise_std'] for case_idx in case_vals],
+        # 'k_delay': [cases[case_idx]['k_delay'] for case_idx in case_vals],
+        # 'batch_size': [cases[case_idx]['batch_size'] for case_idx in case_vals],
         'Simulation': sim_vals,
         'Turbine': turbine_vals,
         'rel_error': rel_error_vals,
@@ -513,7 +514,7 @@ def generate_scores_table(scores_df, save_dir):
         for row_idx, row in export_df.iterrows():
             export_df['rmse'].loc[row_idx] = r'\cellcolor{Gray' + f'{10 - export_df.index.to_list().index(row_idx)}' + r'}' \
                                              + format(export_df["rmse"].loc[row_idx], '.3f')
-            export_df['mean_rel_error'].loc[row_idx] = format(export_df["mean_rel_error"].loc[row_idx], '.3f') + r'$\%$'
+            export_df['median_rel_error'].loc[row_idx] = format(export_df["median_rel_error"].loc[row_idx], '.3f') + r'$\%$'
             export_df['max_rel_error'].loc[row_idx] = format(export_df["max_rel_error"].loc[row_idx], '.3f') + "$\%$"
         
         # Rename features in Candidate Function column
@@ -529,7 +530,7 @@ def generate_scores_table(scores_df, save_dir):
             # 'max_rel_error': r'$e^\star$'
         }
         print(export_df.iloc[0])
-        export_df.drop(columns=['mean_rel_error', 'max_rel_error'], inplace=True)
+        export_df.drop(columns=['median_rel_error', 'max_rel_error'], inplace=True)
         
         # reorder columns
         cols = ['max_training_size', 'kernel', 'noise_std', 'k_delay', 'batch_size',
@@ -568,19 +569,19 @@ def generate_errors_table(errors_df, save_dir, best_case_idx):
         
         # colour lowest mean error with lightest gray, highest with darkest gray
         for row_idx, row in export_df.iterrows():
-            export_df['mean_rel_error'].loc[row_idx] = r'\cellcolor{Gray' \
+            export_df['median_rel_error'].loc[row_idx] = r'\cellcolor{Gray' \
                                                        + f'{len(export_df.index) - export_df.index.to_list().index(row_idx)}' + r'}' \
-                                                       + r'$' + format(export_df["mean_rel_error"].loc[row_idx], '.3f') +  r'$'
+                                                       + r'$' + format(export_df["median_rel_error"].loc[row_idx], '.3f') +  r'$'
             export_df['max_rel_error'].loc[row_idx] = r'$' + format(export_df["max_rel_error"].loc[row_idx], '.3f') +  r'$'
         
         # Rename features in Candidate Function column
         rename_mapping = {
-            'mean_rel_error': r'$\bar{\epsilon}_d$ [$\%$]',
+            'median_rel_error': r'$\bar{\epsilon}_d$ [$\%$]',
             'max_rel_error': r'$\epsilon^\star_d$ [$\%$]'
         }
 
         # reorder columns
-        cols = ['mean_rel_error', 'max_rel_error']
+        cols = ['median_rel_error', 'max_rel_error']
         export_df = export_df[cols]
         export_df = export_df.rename(columns=rename_mapping)
         
