@@ -13,10 +13,10 @@
 # See https://floris.readthedocs.io for documentation
 
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 from floris.tools import FlorisInterface
+
 
 """
 This example creates a FLORIS instance
@@ -36,7 +36,7 @@ fi = FlorisInterface("inputs/gch.yaml")
 fi.reinitialize(layout_x=[0, 500.], layout_y=[0., 0.])
 
 # Single wind speed and wind direction
-print('\n============================= Single Wind Direction and Wind Speed =============================')
+print('\n========================= Single Wind Direction and Wind Speed =========================')
 
 # Get the turbine powers assuming 1 wind speed and 1 wind direction
 fi.reinitialize(wind_directions=[270.], wind_speeds=[8.0])
@@ -51,8 +51,8 @@ print('The turbine power matrix should be of dimensions 1 WD X 1 WS X 2 Turbines
 print(turbine_powers)
 print("Shape: ",turbine_powers.shape)
 
-# Single wind speed and wind direction
-print('\n============================= Single Wind Direction and Multiple Wind Speeds =============================')
+# Single wind speed and multiple wind directions
+print('\n========================= Single Wind Direction and Multiple Wind Speeds ===============')
 
 
 wind_speeds = np.array([8.0, 9.0, 10.0])
@@ -64,8 +64,8 @@ print('The turbine power matrix should be of dimensions 1 WD X 3 WS X 2 Turbines
 print(turbine_powers)
 print("Shape: ",turbine_powers.shape)
 
-# Single wind speed and wind direction
-print('\n============================= Multiple Wind Directions and Multiple Wind Speeds =============================')
+# Multiple wind speeds and multiple wind directions
+print('\n========================= Multiple Wind Directions and Multiple Wind Speeds ============')
 
 wind_directions = np.array([260., 270., 280.])
 wind_speeds = np.array([8.0, 9.0, 10.0])

@@ -12,14 +12,17 @@
 
 from typing import Any, Dict
 
-from attrs import define, field
+import numexpr as ne
 import numpy as np
+from attrs import define, field
 
-from floris.simulation import BaseModel
-from floris.simulation import Farm
-from floris.simulation import FlowField
-from floris.simulation import Grid
-from floris.simulation import Turbine
+from floris.simulation import (
+    BaseModel,
+    Farm,
+    FlowField,
+    Grid,
+    Turbine,
+)
 from floris.utilities import cosd, sind
 
 
@@ -48,11 +51,12 @@ class CrespoHernandez(BaseModel):
                 turbulence.
 
     References:
-        .. bibliography:: /source/zrefs.bib
+        .. bibliography:: /references.bib
             :style: unsrt
             :filter: docname in docnames
             :keyprefix: cht-
     """
+
     initial: float = field(converter=float, default=0.1)
     constant: float = field(converter=float, default=0.9)
     ai: float = field(converter=float, default=0.8)
@@ -70,21 +74,25 @@ class CrespoHernandez(BaseModel):
         axial_induction: np.ndarray,
     ) -> None:
         # Replace zeros and negatives with 1 to prevent nans/infs
-        delta_x = np.array(x - x_i)
+        delta_x = x - x_i
 
         # TODO: ensure that these fudge factors are needed for different rotations
-        upstream_mask = np.array(delta_x <= 0.1)
-        downstream_mask = np.array(delta_x > -0.1)
+        upstream_mask = delta_x <= 0.1
+        downstream_mask = delta_x > -0.1
 
         #        Keep downstream components          Set upstream to 1.0
-        delta_x = delta_x * downstream_mask + np.ones_like(delta_x) * np.array(upstream_mask)
+        delta_x = delta_x * downstream_mask + np.ones_like(delta_x) * upstream_mask
 
         # turbulence intensity calculation based on Crespo et. al.
-        ti = (
-            self.constant
-        * axial_induction ** self.ai
-        * ambient_TI ** self.initial
-        * ((delta_x) / rotor_diameter) ** self.downstream
+        constant = self.constant
+        ai = self.ai
+        initial = self.initial
+        downstream = self.downstream
+        ti = ne.evaluate(
+            "constant"
+            " * axial_induction ** ai"
+            " * ambient_TI ** initial"
+            " * (delta_x / rotor_diameter) ** downstream"
         )
         # Mask the 1 values from above with zeros
-        return ti * np.array(downstream_mask)
+        return ti * downstream_mask

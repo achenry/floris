@@ -13,8 +13,8 @@
 # See https://floris.readthedocs.io for documentation
 
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 
@@ -108,10 +108,7 @@ def derive_downstream_turbines(fi, wind_direction, wake_slope=0.30, plot_lines=F
             return (yt < wake_profile_ub_turbii(xt)) & (yt > wake_profile_lb_turbii(xt))
 
         is_downstream[ii] = not any(
-            [
-                determine_if_in_wake(x_rot_srt[iii], y_rot_srt[iii])
-                for iii in range(n_turbs)
-            ]
+            determine_if_in_wake(x_rot_srt[iii], y_rot_srt[iii]) for iii in range(n_turbs)
         )
 
         if plot_lines:
@@ -198,10 +195,13 @@ def find_layout_symmetry(x, y, step_sizes = [15.0], eps=0.00001):
                     + np.cos(ang * np.pi / 180.0) * y
                 )
                 wd_eval_array.append((wd_eval, wd_eval + wd))
-                id_mapping = [np.where((np.abs(xr - x) < eps) &(np.abs(yr - y) < eps))[0][0] for xr, yr in zip(x_rot, y_rot)]
+                id_mapping = ([
+                    np.where((np.abs(xr - x) < eps) &(np.abs(yr - y) < eps))[0][0]
+                    for xr, yr in zip(x_rot, y_rot)
+                ])
                 mapping_array.append(id_mapping)
 
             df = pd.DataFrame({"wd_range": wd_eval_array, "turbine_mapping": mapping_array})
             return df
-    
+
     return pd.DataFrame()  # Return empty dataframe if completes without finding solution

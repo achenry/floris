@@ -13,16 +13,17 @@
 # See https://floris.readthedocs.io for documentation
 
 
-import matplotlib.pyplot as plt
-import numpy as np
 import os
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 from floris.tools import FlorisInterface
-from floris.tools import visualize_cut_plane #, plot_turbines_with_fi
+
 
 """
-For each turbine in the turbine library, make a small figure showing that its power curve and power loss to yaw are reasonable and 
-reasonably smooth
+For each turbine in the turbine library, make a small figure showing that its power
+curve and power loss to yaw are reasonable and  reasonably smooth
 """
 ws_array = np.arange(0.1,30,0.2)
 yaw_angles = np.linspace(-30,30,60)
@@ -39,7 +40,10 @@ fi.reinitialize(wind_speeds=ws_array)
 
 # Get a list of available turbine models
 turbines = os.listdir('../floris/turbine_library')
+turbines = [t for t in turbines if 'yaml' in t]
 turbines = [t.strip('.yaml') for t in turbines]
+# Remove multi-dimensional Cp/Ct turbine definitions as they require different handling
+turbines = [i for i in turbines if ('multi_dim' not in i)]
 
 # Declare a set of figures for comparing cp and ct across models
 fig_cp_ct, axarr_cp_ct = plt.subplots(2,1,sharex=True,figsize=(10,10))
@@ -54,11 +58,17 @@ for t in turbines:
     fi.assign_hub_height_to_ref_height()
 
     # Plot cp and ct onto the fig_cp_ct plot
-    axarr_cp_ct[0].plot(fi.floris.farm.turbine_map[0].power_thrust_table.wind_speed, fi.floris.farm.turbine_map[0].power_thrust_table.power,label=t )
+    axarr_cp_ct[0].plot(
+        fi.floris.farm.turbine_map[0].power_thrust_table.wind_speed,
+        fi.floris.farm.turbine_map[0].power_thrust_table.power,label=t
+    )
     axarr_cp_ct[0].grid(True)
     axarr_cp_ct[0].legend()
     axarr_cp_ct[0].set_ylabel('Cp')
-    axarr_cp_ct[1].plot(fi.floris.farm.turbine_map[0].power_thrust_table.wind_speed, fi.floris.farm.turbine_map[0].power_thrust_table.thrust,label=t )
+    axarr_cp_ct[1].plot(
+        fi.floris.farm.turbine_map[0].power_thrust_table.wind_speed,
+        fi.floris.farm.turbine_map[0].power_thrust_table.thrust,label=t
+    )
     axarr_cp_ct[1].grid(True)
     axarr_cp_ct[1].legend()
     axarr_cp_ct[1].set_ylabel('Ct')
@@ -69,7 +79,7 @@ for t in turbines:
 
     # Try a few density
     for density in [1.15,1.225,1.3]:
-        
+
         fi.reinitialize(air_density=density)
 
         # POWER CURVE
@@ -109,8 +119,4 @@ for t in turbines:
     # Give a suptitle
     fig.suptitle(t)
 
-
-
 plt.show()
-
-

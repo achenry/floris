@@ -12,15 +12,17 @@
 
 from typing import Any, Dict
 
-from attrs import define, field
 import numexpr as ne
 import numpy as np
+from attrs import define, field
 
-from floris.simulation import BaseModel
-from floris.simulation import Farm
-from floris.simulation import FlowField
-from floris.simulation import Grid
-from floris.simulation import Turbine
+from floris.simulation import (
+    BaseModel,
+    Farm,
+    FlowField,
+    Grid,
+    Turbine,
+)
 
 
 @define
@@ -35,7 +37,7 @@ class JensenVelocityDeficit(BaseModel):
         wake.
 
     References:
-        .. bibliography:: /source/zrefs.bib
+        .. bibliography:: /references.bib
             :style: unsrt
             :filter: docname in docnames
             :keyprefix: jvm-
@@ -55,11 +57,11 @@ class JensenVelocityDeficit(BaseModel):
         do not use this function and instead pass that data directly to
         the model function.
         """
-        kwargs = dict(
-            x=grid.x_sorted,
-            y=grid.y_sorted,
-            z=grid.z_sorted,
-        )
+        kwargs = {
+            "x": grid.x_sorted,
+            "y": grid.y_sorted,
+            "z": grid.z_sorted,
+        }
         return kwargs
 
     # @profile
@@ -86,43 +88,18 @@ class JensenVelocityDeficit(BaseModel):
         # u is 4-dimensional (n wind speeds, n turbines, grid res 1, grid res 2)
         # velocities is 3-dimensional (n turbines, grid res 1, grid res 2)
 
-        # grid.rotate_fields(flow_field.wind_directions)  # TODO: check the rotations with multiple directions or non-0/270
+        # TODO: check the rotations with multiple directions or non-0/270
+        # grid.rotate_fields(flow_field.wind_directions)
 
         # Calculate and apply wake mask
         # x = grid.x_sorted # mesh_x_rotated - x_coord_rotated
 
-        # This is the velocity deficit seen by the i'th turbine due to wake effects from upstream turbines.
+        # This is the velocity deficit seen by the i'th turbine due to wake effects
+        # from upstream turbines.
         # Indeces of velocity_deficit corresponding to unwaked turbines will have 0's
         # velocity_deficit = np.zeros(np.shape(flow_field.u_initial))
 
         rotor_radius = rotor_diameter_i / 2.0
-
-        """
-        dx = x - x_i
-        dy = y - y_i - deflection_field_i
-        dz = z - z_i
-
-        # y = m * x + b
-        boundary_line = self.we * dx + rotor_radius
-
-        # Calculate the wake velocity deficit ratios
-        # Do we need to do masking here or can it be handled in the solver?
-        # TODO: why do we need to slice with i:i+1 below? This became a problem when adding the wind direction dimension. Prior to that, the dimensions worked out simply with i
-        c = ( rotor_radius / ( rotor_radius + self.we * dx + self.NUM_EPS ) ) ** 2
-        # c *= ~(np.array(x - x[:, :, i:i+1] <= 0.0))  # using this causes nan's in the upstream turbine because it negates the mask rather than setting it to 0. When self.we * (x - x[:, :, i:i+1]) ) == the radius, c goes to infinity and then this line flips it to Nans rather than setting to 0.
-        # c *= ~(((y - y_center) ** 2 + (z - z_center) ** 2) > (boundary_line ** 2))
-        # np.nan_to_num
-
-        # C should be 0 at the current turbine and everywhere in front of it
-        downstream_mask = np.array(dx > 0.0 + self.NUM_EPS, dtype=int)
-        # C should be 0 everywhere outside of the lateral and vertical bounds defined by the wake expansion parameter
-        boundary_mask = np.array( np.sqrt(dy ** 2 + dz ** 2) < boundary_line, dtype=int)
-
-        mask = np.logical_and(downstream_mask, boundary_mask)
-        c[~mask] = 0.0
-
-        velocity_deficit = 2 * axial_induction_i * c
-        """
 
         # Numexpr - do not change below without corresponding changes above.
         dx = ne.evaluate("x - x_i")
@@ -132,20 +109,24 @@ class JensenVelocityDeficit(BaseModel):
         we = self.we
         NUM_EPS = JensenVelocityDeficit.NUM_EPS
 
-        # y = m * x + b
-        boundary_line = ne.evaluate("we * dx + rotor_radius")
-
-        c = ne.evaluate("( rotor_radius / ( rotor_radius + we * dx + NUM_EPS ) ) ** 2")
-
-        # C should be 0 at the current turbine and everywhere in front of it
+        # Construct a boolean mask to include all points downstream of the turbine
         downstream_mask = ne.evaluate("dx > 0 + NUM_EPS")
 
-        # C should be 0 everywhere outside of the lateral and vertical bounds defined by the wake expansion parameter
-        boundary_mask = ne.evaluate("sqrt(dy ** 2 + dz ** 2) < boundary_line")
-        
-        mask = np.logical_and(downstream_mask, boundary_mask)
-        c[~mask] = 0.0
-        # c = ne.evaluate("c * downstream_mask * boundary_mask")
+        # Construct a boolean mask to include all points within the wake boundary
+        # as defined by the Jensen model. This is a linear wake expansion that makes
+        # a shape like a cone and starts at the turbine disc.
+        # The left side of the inequality below evaluates the distance from the wake centerline
+        # for all points including positive and negative values. The inequality compares distance
+        # from the centerline and it must be below the line defined by the wake
+        # expansion parameter, "we".
+        boundary_mask = ne.evaluate("sqrt(dy ** 2 + dz ** 2) < we * dx + rotor_radius")
+
+        # Calculate C for points within the mask and fill points outside with 0
+        c = np.where(
+            np.logical_and(downstream_mask, boundary_mask),
+            ne.evaluate("(rotor_radius / (rotor_radius + we * dx + NUM_EPS)) ** 2"),  # This is "C"
+            0.0,
+        )
 
         velocity_deficit = ne.evaluate("2 * axial_induction_i * c")
 

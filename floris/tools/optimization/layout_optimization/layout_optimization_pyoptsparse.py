@@ -13,12 +13,13 @@
 # See https://floris.readthedocs.io for documentation
 
 
-import numpy as np
 import matplotlib.pyplot as plt
-from shapely.geometry import Point
+import numpy as np
 from scipy.spatial.distance import cdist
+from shapely.geometry import Point
 
 from .layout_optimization_base import LayoutOptimization
+
 
 class LayoutOptimizationPyOptSparse(LayoutOptimization):
     def __init__(
@@ -31,9 +32,11 @@ class LayoutOptimizationPyOptSparse(LayoutOptimization):
         optOptions=None,
         timeLimit=None,
         storeHistory='hist.hist',
-        hotStart=None
+        hotStart=None,
+        enable_geometric_yaw=False,
     ):
-        super().__init__(fi, boundaries, min_dist=min_dist, freq=freq)
+        super().__init__(fi, boundaries, min_dist=min_dist, freq=freq,
+                         enable_geometric_yaw=enable_geometric_yaw)
 
         self.x0 = self._norm(self.fi.layout_x, self.xmin, self.xmax)
         self.y0 = self._norm(self.fi.layout_y, self.ymin, self.ymax)
@@ -41,6 +44,7 @@ class LayoutOptimizationPyOptSparse(LayoutOptimization):
         self.storeHistory = storeHistory
         self.timeLimit = timeLimit
         self.hotStart = hotStart
+        self.enable_geometric_yaw = enable_geometric_yaw
 
         try:
             import pyoptsparse
@@ -81,9 +85,20 @@ class LayoutOptimizationPyOptSparse(LayoutOptimization):
             self.sol = self.opt(self.optProb, sens=self._sens)
         else:
             if self.timeLimit is not None:
-                self.sol = self.opt(self.optProb, sens="CDR", storeHistory=self.storeHistory, timeLimit=self.timeLimit, hotStart=self.hotStart)
+                self.sol = self.opt(
+                    self.optProb,
+                    sens="CDR",
+                    storeHistory=self.storeHistory,
+                    timeLimit=self.timeLimit,
+                    hotStart=self.hotStart
+                )
             else:
-                self.sol = self.opt(self.optProb, sens="CDR", storeHistory=self.storeHistory, hotStart=self.hotStart)
+                self.sol = self.opt(
+                    self.optProb,
+                    sens="CDR",
+                    storeHistory=self.storeHistory,
+                    hotStart=self.hotStart
+                )
         return self.sol
 
     def _obj_func(self, varDict):
@@ -93,10 +108,13 @@ class LayoutOptimizationPyOptSparse(LayoutOptimization):
         # Update turbine map with turbince locations
         self.fi.reinitialize(layout_x = self.x, layout_y = self.y)
 
+        # Compute turbine yaw angles using PJ's geometric code (if enabled)
+        yaw_angles = self._get_geoyaw_angles()
+
         # Compute the objective function
         funcs = {}
         funcs["obj"] = (
-            -1 * self.fi.get_farm_AEP(self.freq) / self.initial_AEP
+            -1 * self.fi.get_farm_AEP(self.freq, yaw_angles=yaw_angles) / self.initial_AEP
         )
 
         # Compute constraints, if any are defined for the optimization
@@ -166,7 +184,7 @@ class LayoutOptimizationPyOptSparse(LayoutOptimization):
         for i in range(self.nturbs):
             loc = Point(x[i], y[i])
             boundary_con[i] = loc.distance(self._boundary_line)
-            if self._boundary_polygon.contains(loc)==True:
+            if self._boundary_polygon.contains(loc) is True:
                 boundary_con[i] *= -1.0
 
         return boundary_con

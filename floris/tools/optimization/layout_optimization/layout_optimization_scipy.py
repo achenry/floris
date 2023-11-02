@@ -12,13 +12,14 @@
 
 # See https://floris.readthedocs.io for documentation
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from scipy.optimize import minimize
-from shapely.geometry import Point
 from scipy.spatial.distance import cdist
+from shapely.geometry import Point
 
 from .layout_optimization_base import LayoutOptimization
+
 
 class LayoutOptimizationScipy(LayoutOptimization):
     def __init__(
@@ -30,6 +31,7 @@ class LayoutOptimizationScipy(LayoutOptimization):
         min_dist=None,
         solver='SLSQP',
         optOptions=None,
+        enable_geometric_yaw=False,
     ):
         """
         _summary_
@@ -52,7 +54,8 @@ class LayoutOptimizationScipy(LayoutOptimization):
             optOptions (dict, optional): Dicitonary for setting the
                 optimization options. Defaults to None.
         """
-        super().__init__(fi, boundaries, min_dist=min_dist, freq=freq)
+        super().__init__(fi, boundaries, min_dist=min_dist, freq=freq,
+                    enable_geometric_yaw=enable_geometric_yaw)
 
         self.boundaries_norm = [
             [
@@ -74,10 +77,12 @@ class LayoutOptimizationScipy(LayoutOptimization):
             self._set_opt_bounds()
         if solver is not None:
             self.solver = solver
+
+        default_optOptions = {"maxiter": 100, "disp": True, "iprint": 2, "ftol": 1e-9, "eps":0.01}
         if optOptions is not None:
-            self.optOptions = optOptions
+            self.optOptions = {**default_optOptions, **optOptions}
         else:
-            self.optOptions = {"maxiter": 100, "disp": True, "iprint": 2, "ftol": 1e-9, "eps":0.01}
+            self.optOptions = default_optOptions
 
         self._generate_constraints()
 
@@ -105,12 +110,19 @@ class LayoutOptimizationScipy(LayoutOptimization):
             for valy in locs[self.nturbs : 2 * self.nturbs]
         ]
         self._change_coordinates(locs_unnorm)
-        return -1 * self.fi.get_farm_AEP(self.freq) / self.initial_AEP
+        # Compute turbine yaw angles using PJ's geometric code (if enabled)
+        yaw_angles = self._get_geoyaw_angles()
+        return (-1 * self.fi.get_farm_AEP(self.freq, yaw_angles=yaw_angles) /
+                self.initial_AEP)
 
     def _change_coordinates(self, locs):
         # Parse the layout coordinates
         layout_x = locs[0 : self.nturbs]
         layout_y = locs[self.nturbs : 2 * self.nturbs]
+
+        # Store on object for use in geoyaw code
+        self.x = layout_x
+        self.y = layout_y
 
         # Update the turbine map in floris
         self.fi.reinitialize(layout_x=layout_x, layout_y=layout_y)
@@ -134,7 +146,7 @@ class LayoutOptimizationScipy(LayoutOptimization):
         x = [
             self._unnorm(valx, self.xmin, self.xmax)
             for valx in x_in[0 : self.nturbs]
-        ] 
+        ]
         y =  [
             self._unnorm(valy, self.ymin, self.ymax)
             for valy in x_in[self.nturbs : 2 * self.nturbs]
@@ -163,7 +175,7 @@ class LayoutOptimizationScipy(LayoutOptimization):
         x = [
             self._unnorm(valx, self.xmin, self.xmax)
             for valx in x_in[0 : self.nturbs]
-        ] 
+        ]
         y =  [
             self._unnorm(valy, self.ymin, self.ymax)
             for valy in x_in[self.nturbs : 2 * self.nturbs]
@@ -172,8 +184,10 @@ class LayoutOptimizationScipy(LayoutOptimization):
         for i in range(self.nturbs):
             loc = Point(x[i], y[i])
             boundary_con[i] = loc.distance(self._boundary_line)
-            if self._boundary_polygon.contains(loc)==True:
+            if self._boundary_polygon.contains(loc) is True:
                 boundary_con[i] *= 1.0
+            else:
+                boundary_con[i] *= -1.0
 
         return boundary_con
 

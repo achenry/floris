@@ -12,16 +12,22 @@
 
 # See https://floris.readthedocs.io for documentation
 
-import numpy as np
 import matplotlib.pyplot as plt
-from shapely.geometry import Polygon, LineString
+import numpy as np
+from shapely.geometry import LineString, Polygon
+
+from floris.tools.optimization.yaw_optimization.yaw_optimizer_geometric import (
+    YawOptimizationGeometric,
+)
 
 from ....logging_manager import LoggerBase
 
+
 class LayoutOptimization(LoggerBase):
-    def __init__(self, fi, boundaries, min_dist=None, freq=None):
+    def __init__(self, fi, boundaries, min_dist=None, freq=None, enable_geometric_yaw=False):
         self.fi = fi.copy()
         self.boundaries = boundaries
+        self.enable_geometric_yaw = enable_geometric_yaw
 
         self._boundary_polygon = Polygon(self.boundaries)
         self._boundary_line = LineString(self.boundaries)
@@ -39,10 +45,22 @@ class LayoutOptimization(LoggerBase):
 
         # If freq is not provided, give equal weight to all wind conditions
         if freq is None:
-            self.freq = np.ones((self.fi.floris.flow_field.n_wind_directions, self.fi.floris.flow_field.n_wind_speeds))
+            self.freq = np.ones((
+                self.fi.floris.flow_field.n_wind_directions,
+                self.fi.floris.flow_field.n_wind_speeds
+            ))
             self.freq = self.freq / self.freq.sum()
         else:
             self.freq = freq
+
+        # Establish geometric yaw class
+        if self.enable_geometric_yaw:
+            self.yaw_opt = YawOptimizationGeometric(
+                fi,
+                minimum_yaw_angle=-30.0,
+                maximum_yaw_angle=30.0,
+                exploit_layout_symmetry=False
+            )
 
         self.initial_AEP = fi.get_farm_AEP(self.freq)
 
@@ -54,6 +72,18 @@ class LayoutOptimization(LoggerBase):
 
     def _unnorm(self, val, x1, x2):
         return np.array(val) * (x2 - x1) + x1
+
+    def _get_geoyaw_angles(self):
+        # NOTE: requires that child class saves x and y locations
+        # as self.x and self.y and updates them during optimization.
+        if self.enable_geometric_yaw:
+            self.yaw_opt.fi_subset.reinitialize(layout_x=self.x, layout_y=self.y)
+            df_opt = self.yaw_opt.optimize()
+            self.yaw_angles = np.vstack(df_opt['yaw_angles_opt'])[:, None, :]
+        else:
+            self.yaw_angles = None
+
+        return self.yaw_angles
 
     # Public methods
 
@@ -90,8 +120,7 @@ class LayoutOptimization(LoggerBase):
                 plt.plot(
                     [verts[i][0], verts[i + 1][0]], [verts[i][1], verts[i + 1][1]], "b"
                 )
-        
-        plt.show()
+
 
     ###########################################################################
     # Properties

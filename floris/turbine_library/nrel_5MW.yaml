@@ -1,11 +1,45 @@
+
+###
+# An ID for this type of turbine definition.
+# This is not currently used, but it will be enabled in the future. This should typically
+# match the root name of the file.
 turbine_type: 'nrel_5MW'
+
+###
+# Setting for generator losses to power.
 generator_efficiency: 1.0
+
+###
+# Hub height.
 hub_height: 90.0
+
+###
+# Cosine exponent for power loss due to yaw misalignment.
 pP: 1.88
+
+###
+# Cosine exponent for power loss due to tilt.
 pT: 1.88
+
+###
+# Rotor diameter.
 rotor_diameter: 126.0
+
+###
+# Tip speed ratio defined as linear blade tip speed normalized by the incoming wind speed.
 TSR: 8.0
+
+###
+# The air density at which the Cp and Ct curves are defined.
 ref_density_cp_ct: 1.225
+
+###
+# The tilt angle at which the Cp and Ct curves are defined. This is used to capture
+# the effects of a floating platform on a turbine's power and wake.
+ref_tilt_cp_ct: 5.0
+
+###
+# Cp and Ct as a function of wind speed for the turbine's full range of operating conditions.
 power_thrust_table:
   power:
     - 0.0
@@ -112,7 +146,7 @@ power_thrust_table:
     - 0.0
     - 0.0
   wind_speed:
-    - 0.0 
+    - 0.0
     - 2.0
     - 2.5
     - 3.0
@@ -163,3 +197,16 @@ power_thrust_table:
     - 25.01
     - 25.02
     - 50.0
+
+###
+# A boolean flag used when the user wants FLORIS to use the user-supplied multi-dimensional
+# Cp/Ct information.
+multi_dimensional_cp_ct: False
+
+###
+# The path to the .csv file that contains the multi-dimensional Cp/Ct data. The format of this
+# file is such that any external conditions, such as wave height or wave period, that the
+# Cp/Ct data is dependent on come first, in column format. The last three columns of the .csv
+# file must be ``ws``, ``Cp``, and ``Ct``, in that order. An example of fictional data is given
+# in ``floris/turbine_library/iea_15MW_multi_dim_Tp_Hs.csv``.
+power_thrust_data_file: '../floris/turbine_library/iea_15MW_multi_dim_Tp_Hs.csv'

@@ -14,16 +14,19 @@
 
 
 import copy
+import warnings
 from time import perf_counter as timerpc
 
 import numpy as np
 import pandas as pd
 
+from floris.logging_manager import LoggerBase
+
 # from .yaw_optimizer_scipy import YawOptimizationScipy
 from .yaw_optimization_base import YawOptimization
 
 
-class YawOptimizationSR(YawOptimization):
+class YawOptimizationSR(YawOptimization, LoggerBase):
     def __init__(
         self,
         fi,
@@ -66,8 +69,10 @@ class YawOptimizationSR(YawOptimization):
             if Ny < 2:
                 raise ValueError("Each entry in Ny_passes must have a value of at least 2.")
             if (Nii > 0) & ((Ny + 1) % 2 == 0):
-                raise ValueError("The second and further entries of Ny_passes must be even numbers. " + 
-                    "This is to ensure the same yaw angles are not evaluated twice between passes.")
+                raise ValueError(
+                    "The second and further entries of Ny_passes must be even numbers. "
+                    "This is to ensure the same yaw angles are not evaluated twice between passes."
+                )
 
         # # Set baseline and optimization settings
         # if reduce_ngrid:
@@ -125,17 +130,30 @@ class YawOptimizationSR(YawOptimization):
         if use_memory:
             idx = (np.abs(yaw_angles_opt_subset - yaw_angles_subset) < 0.01).all(axis=2).all(axis=1)
             farm_powers[idx, :] = farm_power_opt_subset[idx, :]
-            # print("Skipping {:d}/{:d} calculations: already in memory.".format(np.sum(idx), len(idx)))
+            if self.print_progress:
+                self.logger.info(
+                    "Skipping {:d}/{:d} calculations: already in memory.".format(
+                        np.sum(idx), len(idx))
+                )
         else:
             idx = np.zeros(yaw_angles_subset.shape[0], dtype=bool)
 
         if not np.all(idx):
             # Now calculate farm powers for conditions we haven't yet evaluated previously
             start_time = timerpc()
+            if (hasattr(self.fi.floris.flow_field, 'heterogenous_inflow_config') and
+                self.fi.floris.flow_field.heterogenous_inflow_config is not None):
+                het_sm_orig = np.array(
+                    self.fi.floris.flow_field.heterogenous_inflow_config['speed_multipliers']
+                )
+                het_sm = np.tile(het_sm_orig, (Ny, 1))[~idx, :]
+            else:
+                het_sm = None
             farm_powers[~idx, :] = self._calculate_farm_power(
                 wd_array=wd_array_subset[~idx],
                 turbine_weights=turbine_weights_subset[~idx, :, :],
                 yaw_angles=yaw_angles_subset[~idx, :, :],
+                heterogeneous_speed_multipliers=het_sm
             )
             self.time_spent_in_floris += (timerpc() - start_time)
 
@@ -157,7 +175,7 @@ class YawOptimizationSR(YawOptimization):
         Calculate the yaw angles for every iteration in the SR algorithm, for turbine,
         for every wind direction, for every wind speed, for every TI. Basically, this
         should yield a grid of yaw angle sets to evaluate the wind farm AEP with 'Ny'
-        times. Then, for each ambient condition set, 
+        times. Then, for each ambient condition set,
         """
 
         # Initialize yaw angles to evaluate, 'Ny' times the wind rose
@@ -211,11 +229,13 @@ class YawOptimizationSR(YawOptimization):
         farm_powers = self._calc_powers_with_memory(evaluation_grid)
         return farm_powers
 
-    def optimize(self): 
+    def optimize(self, print_progress=True):
         """
         Find the yaw angles that maximize the power production for every wind direction,
         wind speed and turbulence intensity.
         """
+        self.print_progress = print_progress
+
         # For each pass, from front to back
         ii = 0
         for Nii in range(len(self.Ny_passes)):
@@ -223,16 +243,32 @@ class YawOptimizationSR(YawOptimization):
             for turbine_depth in range(self.nturbs):
                 p = 100.0 * ii / (len(self.Ny_passes) * self.nturbs)
                 ii += 1
-                print("[Serial Refine] Processing pass={:d}, turbine_depth={:d} ({:.1f} %)".format(Nii, turbine_depth, p))
+                if self.print_progress:
+                    print(
+                        f"[Serial Refine] Processing pass={Nii}, "
+                        f"turbine_depth={turbine_depth} ({p:.1f}%)"
+                    )
 
                 # Create grid to evaluate yaw angles for one turbine == turbine_depth
-                evaluation_grid = self._generate_evaluation_grid(pass_depth=Nii, turbine_depth=turbine_depth)
+                evaluation_grid = self._generate_evaluation_grid(
+                    pass_depth=Nii,
+                    turbine_depth=turbine_depth
+                )
 
                 # Evaluate grid of yaw angles, get farm powers and find optimal solutions
                 farm_powers = self._process_evaluation_grid()
 
+                # If farm powers contains any nans, then issue a warning
+                if np.any(np.isnan(farm_powers)):
+                    err_msg = (
+                        "NaNs found in farm powers during SerialRefine "
+                        "optimization routine. Proceeding to maximize over yaw "
+                        "settings that produce valid powers."
+                    )
+                    self.logger.warning(err_msg, stack_info=True)
+
                 # Find optimal solutions in new evaluation grid
-                args_opt = np.expand_dims(np.argmax(farm_powers, axis=0), axis=0)
+                args_opt = np.expand_dims(np.nanargmax(farm_powers, axis=0), axis=0)
                 farm_powers_opt_new = np.squeeze(
                     np.take_along_axis(farm_powers, args_opt, axis=0),
                     axis=0,
@@ -240,7 +276,7 @@ class YawOptimizationSR(YawOptimization):
                 yaw_angles_opt_new = np.squeeze(
                     np.take_along_axis(
                         evaluation_grid,
-                        np.expand_dims(args_opt, axis=3), 
+                        np.expand_dims(args_opt, axis=3),
                         axis=0
                     ),
                     axis=0
