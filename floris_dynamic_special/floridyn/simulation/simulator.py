@@ -2,7 +2,7 @@ import numpy as np
 import copy
 import itertools
 import statistics
-import floris.tools.train_run as tr
+from ..tools import train_run as tr
 
 class Simulator():
     """

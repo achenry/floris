@@ -13,7 +13,7 @@
 # See https://floris.readthedocs.io for documentation
 
 import json
-
+from ..utilities import load_yaml
 import numpy as np
 
 
@@ -64,7 +64,21 @@ class InputReader:
             "wind_x": list,
             "wind_y": list,
         }
+    
+    def _parseYAML(self, filename):
+        """
+        Opens the input YAML file and parses the contents into a Python
+        dict.
 
+        Args:
+            filename (str): Path to the JSON input file.
+
+        Returns:
+            dict: The data parsed from the input file.
+        """
+        data = load_yaml(filename)
+        return data
+    
     def _parseJSON(self, filename):
         """
         Opens the input JSON file and parses the contents into a Python
@@ -216,8 +230,10 @@ class InputReader:
                 - Validated "wake" section from the input dictionary.
                 - Validated "farm" section from the input dictionary.
         """
-        if input_file is not None:
+        if input_file is not None and 'json' in input_file:
             input_dict = self._parseJSON(input_file)
+        elif input_file is not None and 'yaml' in input_file:
+            input_dict = self._parseYAML(input_file)
         elif input_dict is not None:
             input_dict = input_dict.copy()
         else:

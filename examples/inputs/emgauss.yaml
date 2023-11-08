@@ -1,6 +1,6 @@
 
-name: Emperical Gaussian
-description: Three turbines using emperical Gaussian model
+name: Empirical Gaussian
+description: Three turbines using empirical Gaussian model
 floris_version: v3.x
 
 logging:
@@ -17,13 +17,25 @@ solver:
 
 farm:
   layout_x:
-  - 0.0
-  - 630.0
-  - 1260.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 882.0
+    - 882.0
+    - 882.0
+    - 1764.0
+    - 1764.0
+    - 1764.0
   layout_y:
-  - 0.0
-  - 0.0
-  - 0.0
+    - 0.0
+    - 756.0
+    - 1512.0
+    - 0.0
+    - 756.0
+    - 1512.0
+    - 0.0
+    - 756.0
+    - 1512.0
   turbine_type:
   - nrel_5MW
 

@@ -119,6 +119,7 @@ class Farm:
             "jensen",
             "multizone",
             "gauss",
+            "empirical_gauss",
             "gauss_legacy",
             "blondel",
             "ishihara_qian",

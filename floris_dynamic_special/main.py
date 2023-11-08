@@ -9,68 +9,18 @@
 # Run not DEBUG on RC and generate results
 
 import numpy as np
-from DownstreamTurbineGPR import GP_CONSTANTS, get_system_info, init_gprs, \
-    get_base_model, \
-    AX_IND_FACTOR_RANGE, YAW_ANGLE_RANGE, WIND_SPEED_RANGE, WIND_DIR_RANGE
 import pandas as pd
 from collections import defaultdict
 import pickle
 import os
-import matplotlib as mpl
 from preprocessing import add_gaussian_noise, get_paths
 import multiprocessing as mp
 from multiprocessing import Pool
 from postprocessing import plot_score, plot_std_evolution, plot_ts, plot_error_ts, plot_k_train_evolution, \
     compute_scores, compute_errors, plot_wind_farm, generate_scores_table, generate_errors_table
-# import matplotlib.animation as animation
-# from matplotlib.animation import FuncAnimation, FFMpegWriter
-from sklearn.gaussian_process.kernels import RBF, ConstantKernel, Matern
-import sys
 import argparse
 from sklearn.preprocessing import MinMaxScaler
-
-if sys.platform == 'darwin':
-    FARM_LAYOUT = '9turb'
-    SIM_SAVE_DIR = f'./{FARM_LAYOUT}_wake_field_simulations'
-    TS_SAVE_DIR = f'./{FARM_LAYOUT}_wake_field_tsdata'
-    FLORIS_DIR = f'./{FARM_LAYOUT}_floris_input.json'
-    BASE_MODEL_FLORIS_DIR = f'./{FARM_LAYOUT}_base_model_floris_input.json'
-    DATA_DIR = './data'
-    FIG_DIR = './figs'
-    SCALARS_DIR = './scalars'
-elif sys.platform == 'linux':
-    FARM_LAYOUT = '9turb'
-    SIM_SAVE_DIR = f'/scratch/alpine/aohe7145/wake_gp/{FARM_LAYOUT}_wake_field_simulations'
-    TS_SAVE_DIR = f'/scratch/alpine/aohe7145/wake_gp/{FARM_LAYOUT}_wake_field_tsdata'
-    FLORIS_DIR = f'./{FARM_LAYOUT}_floris_input.json'
-    BASE_MODEL_FLORIS_DIR = f'./{FARM_LAYOUT}_base_model_floris_input.json'
-    DATA_DIR = f'/scratch/alpine/aohe7145/wake_gp/data'
-    FIG_DIR = f'/scratch/alpine/aohe7145/wake_gp/figs'
-    SCALARS_DIR = '/scratch/alpine/aohe7145/wake_gp/scalars'
-
-FIGSIZE = (42, 21)
-COLOR_1 = 'darkgreen'
-COLOR_2 = 'indigo'
-BIG_FONT_SIZE = 70
-SMALL_FONT_SIZE = 66
-mpl.rcParams.update({'font.size': SMALL_FONT_SIZE,
-					 'axes.titlesize': BIG_FONT_SIZE,
-					 'figure.figsize': FIGSIZE,
-					 'legend.fontsize': SMALL_FONT_SIZE,
-					 'xtick.labelsize': SMALL_FONT_SIZE,
-					 'ytick.labelsize': SMALL_FONT_SIZE,
-                     'lines.linewidth': 4,
-					 'figure.autolayout': True,
-                     'lines.markersize': 10,
-                     'yaxis.labellocation': 'top'
-                     })
-
-TRAIN_ONLINE = True
-TRAIN_OFFLINE = False
-FIT_ONLINE = True
-COLLECT_TEST_VARIANCE = False
-COLLECT_K_TRAIN = False
-GP_CONSTANTS['PROPORTION_TRAINING_DATA'] = 1
+import time
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-d', '--debug', action='store_true', default=False)
@@ -90,18 +40,6 @@ TMAX = 3600 #300 if DEBUG else 1200
 N_TOTAL_DATASETS = 9 if DEBUG else 500
 
 # construct case hierarchy
-KERNELS = [lambda: ConstantKernel() * RBF(),
-           lambda: ConstantKernel() * Matern()]
-MAX_TRAINING_SIZE_VALS = [5, 10, 20]
-NOISE_STD_VALS = [0.001, 0.01, 0.1]
-K_DELAY_VALS = [2, 4, 8]
-BATCH_SIZE_VALS = [1, 2, 4]
-default_kernel = lambda: ConstantKernel() * Matern() # RBF(length_scale_bounds=(1e-12, 1e12))
-default_kernel_idx = 1
-default_max_training_size = 10
-default_batch_size = 1
-default_noise_std = 0.01
-default_k_delay = 4
 
 cases = [{'kernel': default_kernel(), 'max_training_size': default_max_training_size,
           'noise_std': default_noise_std, 'k_delay': default_k_delay, 'batch_size': x} for x in BATCH_SIZE_VALS] + \
@@ -396,7 +334,10 @@ def run_single_simulation(case_idx, gprs, simulation_df_path, simulation_idx,
                     
                     # refit gp
                     if FIT_ONLINE:
+                        start_time = time.time()
                         gprs[gp_idx].fit()
+                        run_time = (time.time() - start_time)
+                        print(f'Execution time in seconds = {str(run_time)}')
                         
                         if COLLECT_TEST_VARIANCE:
                             test_var[k_gp, gp_idx] = gprs[gp_idx].compute_test_var()
@@ -446,6 +387,14 @@ if __name__ == '__main__':
 
     # Fetch wind farm system layout information, floris interface used to simulate 'true' wind farm
     system_fi = get_system_info(FLORIS_DIR)
+    
+    if GENERATE_PLOTS:
+        system_fi.reinitialize_flow_field(wind_speed=10, wind_direction=260)
+        system_fi.calculate_wake(yaw_angles=[5, 10, 5, 10, 15, 10, 15, 20, 15])
+        farm_fig = plot_wind_farm(system_fi)
+        farm_fig.show()
+        farm_fig.savefig(os.path.join(FIG_DIR, f'wind_farm.png'))
+    
     assert system_fi.get_model_parameters()["Wake Deflection Parameters"]["use_secondary_steering"] == False
     assert "use_yaw_added_recovery" not in system_fi.get_model_parameters()["Wake Deflection Parameters"] or \
            system_fi.get_model_parameters()["Wake Deflection Parameters"]["use_yaw_added_recovery"] == False
@@ -588,8 +537,26 @@ if __name__ == '__main__':
         best_case_scores_df = scores_df.loc[scores_df['Case'] == best_case_idx]
         best_case_errors_df = errors_df.loc[errors_df['Case'] == best_case_idx]
         best_case_scores_df.to_csv(os.path.join(FIG_DIR, 'best_case_scores.csv'))
+        if False:
+            fn = '/Users/aoifework/Downloads/best_case_scores.csv'
+            best_case_scores_df = pd.read_csv(fn, index_col=0)
+            # get greatest outlying RMSE and median over all simulations for each turbine
+            print('Greatest RMSE_d value over all simulations',
+                  best_case_scores_df.groupby(by='Turbine').max()['rmse'].sort_values())
+            print('Median RMSE_d value over all simulations',
+                  best_case_scores_df.groupby(by='Turbine').median()['rmse'].sort_values())
+        
         best_case_errors_df.to_csv(os.path.join(FIG_DIR, 'best_case_errors.csv'))
-        #
+        if False:
+            fn = '/Users/aoifework/Downloads/best_case_errors.csv'
+            best_case_error_df = pd.read_csv(fn, index_col=0)
+            best_case_error_df['abs_rel_error'] = best_case_error_df['rel_error'].abs()
+            # get greatest outlying RMSE and median over all simulations for each turbine
+            print('Greatest RelError_d value over all simulations',
+                  best_case_error_df.groupby(by='Turbine').max()['abs_rel_error'].sort_values(ascending=False))
+            print('Median RelError_d value over all simulations',
+                  best_case_error_df.groupby(by='Turbine').median()['abs_rel_error'].sort_values(ascending=False))
+        
         best_errors_df = best_case_scores_df.groupby('Turbine')[['median_rel_error', 'max_rel_error']].max().sort_values(by='median_rel_error', ascending=True)
         generate_errors_table(best_errors_df, FIG_DIR, best_case_idx)
         
@@ -651,12 +618,6 @@ if __name__ == '__main__':
         #                              best_case_simulation_results, time_ts)
         # error_ts_fig.show()
         # error_ts_fig.savefig(os.path.join(FIG_DIR, f'error_ts.png'))
-        
-        system_fi.reinitialize_flow_field(wind_speed=10, wind_direction=260)
-        system_fi.calculate_wake(yaw_angles=[5, 10, 5, 10, 15, 10, 15, 20, 15])
-        farm_fig = plot_wind_farm(system_fi)
-        farm_fig.show()
-        farm_fig.savefig(os.path.join(FIG_DIR, f'wind_farm.png'))
 
         # def plot_score_evolution():
         #     """

@@ -34,14 +34,14 @@ REQUIRED = [
     "numpy>=1.20",
     "scipy>=1.1",
     "seaborn",
-	"sklearn",
+	"scikit-learn",
     "pyproj",
     # tools
     "matplotlib>=3",
     "pandas",
     "shapely",
 
-    "floris>=2.4",
+    # "floris>=2.4",
 
     # utilities
     "coloredlogs>=10.0",

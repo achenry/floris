@@ -13,7 +13,8 @@
 # See https://floris.readthedocs.io for documentation
 
 import numpy as np
-
+import yaml
+import os
 
 class Vec3:
     def __init__(self, x1, x2=None, x3=None, string_format=None):
@@ -196,3 +197,25 @@ def wrap_360(x):
     x = np.where(x < 0.0, x + 360.0, x)
     x = np.where(x >= 360.0, x - 360.0, x)
     return x
+
+class Loader(yaml.SafeLoader):
+
+    def __init__(self, stream):
+
+        self._root = os.path.split(stream.name)[0]
+
+        super().__init__(stream)
+
+    def include(self, node):
+
+        filename = os.path.join(self._root, self.construct_scalar(node))
+
+        with open(filename, 'r') as f:
+            return yaml.load(f, self.__class__)
+
+
+Loader.add_constructor('!include', Loader.include)
+
+def load_yaml(filename, loader=Loader):
+    with open(filename) as fid:
+        return yaml.load(fid, loader)

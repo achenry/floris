@@ -738,7 +738,8 @@ class FlowField:
 
                 temp_turbine.wind_field_buffer.add_wind_speed(new_wind_speed, delay)
 
-    def calculate_wake(self, no_wake=False, points=None, track_n_upstream_wakes=False, sim_time=None, look_ahead=False, propagate_wind_speed=None, visualize=False, first_x=None, angle_changes=None):
+    def calculate_wake(self, no_wake=False, points=None, track_n_upstream_wakes=False, sim_time=None, look_ahead=False,
+                       propagate_wind_speed=None, visualize=False, first_x=None, angle_changes=None):
         """
         Updates the flow field based on turbine activity.
 
@@ -813,7 +814,7 @@ class FlowField:
         u_wake = np.zeros(np.shape(self.u))
         # v_wake = np.zeros(np.shape(self.u))
         # w_wake = np.zeros(np.shape(self.u))
-
+        
         # Empty the stored variables of v and w at start, these will be updated
         # and stored within the loop
         self.v = np.zeros(np.shape(self.u))

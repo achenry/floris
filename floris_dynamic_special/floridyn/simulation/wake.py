@@ -22,11 +22,14 @@ from .wake_deflection.gauss import Gauss as GaussDeflection
 from .wake_combination.sosfs import SOSFS
 from .wake_turbulence.direct import Direct as DirectTurbulence
 from .wake_deflection.jimenez import Jimenez
+from .wake_velocity.gaussianModels.empirical_gauss import EmpiricalGaussVelocityDeficit
+from .wake_deflection.empirical_gauss import EmpiricalGaussVelocityDeflection
 from .wake_velocity.multizone import MultiZone
 from .wake_turbulence.ishihara_qian import IshiharaQian as IshiharaQianTurbulence
 from .wake_turbulence.crespo_hernandez import (
     CrespoHernandez as CrespoHernandezTurbulence,
 )
+from .wake_turbulence.wake_induced_mixing import WakeInducedMixing
 from .wake_velocity.gaussianModels.gauss import Gauss as GaussDeficit
 from .wake_velocity.base_velocity_deficit import VelocityDeficit
 from .wake_turbulence.base_wake_turbulence import WakeTurbulence
@@ -80,6 +83,7 @@ class Wake:
             "ishihara_qian": IshiharaQianDeficit,
             "curl": CurlDeficit,
             "blondel": BlondelDeficit,
+            "empirical_gauss": EmpiricalGaussVelocityDeficit
         }
         self.velocity_model = properties["velocity_model"]
 
@@ -88,6 +92,7 @@ class Wake:
             "ishihara_qian": IshiharaQianTurbulence,
             "direct": DirectTurbulence,
             "None": WakeTurbulence,
+            "wake_induced_mixing": WakeInducedMixing
         }
         self.turbulence_model = properties["turbulence_model"]
 
@@ -95,6 +100,7 @@ class Wake:
             "jimenez": Jimenez,
             "gauss": GaussDeflection,
             "curl": CurlDeflection,
+            "empirical_gauss": EmpiricalGaussVelocityDeflection
         }
         self.deflection_model = properties["deflection_model"]
 
