@@ -34,3 +34,8 @@ examples/SLSQP.out
 
 # Log files
 *.log
+evaluations/
+figs/
+histories/
+model_weights/
+raw_data/
