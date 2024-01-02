@@ -384,7 +384,9 @@ class FlorisInterface(LoggerBase):
         self.reinitialize(wind_directions=wd, wind_speeds=ws, solver_settings=solver_settings)
 
         # TODO this has to be done here as it seems to be lost with reinitialize
-        if yaw_angles is not None:
+        if yaw_angles is None:
+            self.floris.farm.yaw_angles = current_yaw_angles
+        else:
             self.floris.farm.yaw_angles = yaw_angles
 
         # Calculate wake
