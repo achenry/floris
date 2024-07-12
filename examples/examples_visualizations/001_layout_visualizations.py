@@ -20,7 +20,7 @@ MIN_WS = 1.0
 MAX_WS = 8.0
 
 # Initialize FLORIS with the given input file.
-fmodel = FlorisModel("../inputs/gch.yaml")
+fmodel = FlorisModel("/Users/ahenry/Documents/toolboxes/floris/examples/inputs/gch.yaml")
 
 # Change to 5-turbine layout with a wind direction from northwest
 fmodel.set(
