@@ -115,8 +115,10 @@ class YawOptimizationScipy(YawOptimization):
 
         # Undo normalization/masks and save results to self
         for i, residual_plant in enumerate(residual_plants):
+            if residual_plant is None:
+                continue
             J0 = self._farm_power_baseline_subset[i]
-            turbs_to_opt=self._turbs_to_opt_subset[i, :],
+            turbs_to_opt = self._turbs_to_opt_subset[i, :]
             self._farm_power_opt_subset[i] = -residual_plant.fun * J0
             self._yaw_angles_opt_subset[i, turbs_to_opt] = (
                 residual_plant.x * self._normalization_length
