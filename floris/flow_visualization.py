@@ -80,7 +80,7 @@ def line_contour_cut_plane(
         ax.clabel(contours, contours.levels, inline=True, fontsize=10, colors="black")
 
     # Make equal axis
-    ax.set_aspect("equal")
+    # ax.set_aspect("equal")
 
 
 def visualize_cut_plane(
@@ -154,6 +154,12 @@ def visualize_cut_plane(
     if clevels is None:
         clevels = levels
 
+    corner_values_df = pd.DataFrame(
+        data={"x1": [cut_plane.df.x1.min(), cut_plane.df.x1.min(), cut_plane.df.x1.max(), cut_plane.df.x1.max()], 
+              "x2": [cut_plane.df.x2.min(), cut_plane.df.x2.max(), cut_plane.df.x2.min(), cut_plane.df.x2.max()], 
+              "u": [cut_plane.df.u.max()] * 4})
+    cut_plane.df = pd.concat([cut_plane.df, corner_values_df], ignore_index=True)
+    
     # Plot the cut-through
     im = ax.tricontourf(
         cut_plane.df.x1,
@@ -189,7 +195,7 @@ def visualize_cut_plane(
     ax.set_title(title)
 
     # Make equal axis
-    ax.set_aspect("equal")
+    # ax.set_aspect("equal")
 
     return ax
 

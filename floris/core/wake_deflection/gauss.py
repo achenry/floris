@@ -159,6 +159,10 @@ class GaussVelocityDeflection(BaseModel):
         # wake expansion parameters
         ky = self.ka * turbulence_intensity_i + self.kb
         kz = self.ka * turbulence_intensity_i + self.kb
+        
+        # if np.any(M0 < 0) or np.any(sigma_y0 < 0):
+        if np.any(u0 > freestream_velocity) or np.any(cosd(yaw_i) < 0):
+            print("hi")
 
         C0 = 1 - u0 / freestream_velocity
         M0 = C0 * (2 - C0)
@@ -190,6 +194,7 @@ class GaussVelocityDeflection(BaseModel):
 
         M0_sqrt = np.sqrt(M0)
         middle_term = np.sqrt(sigma_y * sigma_z / (sigma_y0 * sigma_z0))
+         
         ln_deltaNum = (1.6 + M0_sqrt) * (1.6 * middle_term - M0_sqrt)
         ln_deltaDen = (1.6 - M0_sqrt) * (1.6 * middle_term + M0_sqrt)
 

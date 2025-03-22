@@ -122,6 +122,7 @@ class UncertainFlorisModel(LoggingManager):
 
     def set(
         self,
+        wd_stddevs=None,
         **kwargs,
     ):
         """
@@ -135,10 +136,11 @@ class UncertainFlorisModel(LoggingManager):
         # Call the nominal set function
         self.fmodel_unexpanded.set(**kwargs)
 
-        self._set_uncertain()
+        self._set_uncertain(wd_stddevs)
 
     def _set_uncertain(
         self,
+        wd_stdevs
     ):
         """
         Sets the underlying wind direction (wd), wind speed (ws), turbulence intensity (ti),
@@ -188,9 +190,12 @@ class UncertainFlorisModel(LoggingManager):
             self.fix_yaw_to_nominal_direction,
             self.fmodel_unexpanded.core.farm.n_turbines,
         )
+        # NOTE: self._expanded_wind_directions is divided along axis 0 for each value in wd_sample_point e.g. for wd_sample_point[0] all inputs are listed, then for wd_sample_point[1] ...
+        
         self.n_expanded = self._expanded_wind_directions.shape[0]
 
-        # Get the unique inputs
+        # Get the unique inputs for wind_dir, wind_speed, ti, yaw_angles, power_setpoints, awc_amplitudes over all values in wd_sample_points
+        # map_to_expanded_inputs is map from index in _expanded_wind_directions (inc all wd_sample_points) to index in self.unique_inputs 
         self.unique_inputs, self.map_to_expanded_inputs = self._get_unique_inputs(
             self._expanded_wind_directions
         )
@@ -251,7 +256,7 @@ class UncertainFlorisModel(LoggingManager):
 
         self.fmodel_expanded.run_no_wake()
 
-    def _get_turbine_powers(self):
+    def _get_turbine_powers(self, per_wd_sample):
         """Calculates the power at each turbine in the wind farm.
 
         This method calculates the power at each turbine in the wind farm, considering
@@ -270,11 +275,12 @@ class UncertainFlorisModel(LoggingManager):
             n_unexpanded=self.n_unexpanded,
             n_sample_points=self.n_sample_points,
             n_turbines=self.fmodel_unexpanded.core.farm.n_turbines,
+            per_wd_sample=per_wd_sample
         )
 
         return result
 
-    def get_turbine_powers(self):
+    def get_turbine_powers(self, per_wd_sample=False):
         """
         Calculate the power at each turbine in the wind farm.  If WindRose or
            WindTIRose is passed in, result is reshaped to match
@@ -283,7 +289,7 @@ class UncertainFlorisModel(LoggingManager):
             NDArrayFloat: An array containing the powers at each turbine for each findex.
         """
 
-        turbine_powers = self._get_turbine_powers()
+        turbine_powers = self._get_turbine_powers(per_wd_sample=per_wd_sample)
 
         if self.fmodel_unexpanded.wind_data is not None:
             if isinstance(self.fmodel_unexpanded.wind_data, (WindRose, WindRoseWRG)):
@@ -866,7 +872,7 @@ class UncertainFlorisModel(LoggingManager):
         # Create an array to hold the expanded data
         output_array = np.zeros((num_rows * num_samples, input_array.shape[1]))
 
-        # Repeat each row of input_array for each sample point
+        # Repeat each row of input_array for each wind direction sample point
         for i in range(num_samples):
             start_idx = i * num_rows
             end_idx = start_idx + num_rows
@@ -1129,6 +1135,7 @@ def map_turbine_powers_uncertain(
     n_unexpanded,
     n_sample_points,
     n_turbines,
+    per_wd_sample
 ):
     """Calculates the power at each turbine in the wind farm based on uncertainty weights.
 
@@ -1150,18 +1157,21 @@ def map_turbine_powers_uncertain(
 
     """
 
-    # Expand back to the expanded value
+    # Expand back to the expanded value (inc values for all wd_sample_points)
     expanded_turbine_powers = unique_turbine_powers[map_to_expanded_inputs]
-
-    # Reshape the weights array to make it compatible with broadcasting
-    weights_reshaped = weights[:, np.newaxis]
-
+    
     # Reshape expanded_turbine_powers into blocks
     blocks = np.reshape(
         expanded_turbine_powers,
         (n_unexpanded, n_sample_points, n_turbines),
         order="F",
     )
+    
+    if per_wd_sample:
+        return blocks
+    
+    # Reshape the weights array to make it compatible with broadcasting
+    weights_reshaped = weights[:, np.newaxis]
 
     # Multiply each block by the corresponding weight
     weighted_blocks = blocks * weights_reshaped

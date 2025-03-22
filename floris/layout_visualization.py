@@ -77,7 +77,7 @@ def plot_turbine_points(
     )
 
     # Make sure axis set to equal
-    ax.axis("equal")
+    # ax.axis("equal")
 
     return ax
 
@@ -184,8 +184,8 @@ def plot_turbine_labels(
             )
 
     # Plot labels and aesthetics
-    ax.axis("equal")
-
+    # ax.axis("equal") # adds ugly grid back in
+    ax.set_aspect("equal") # maintains clean figure
     return ax
 
 

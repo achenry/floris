@@ -30,6 +30,7 @@ class YawOptimization(LoggingManager):
         calc_baseline_power=True,
         exclude_downstream_turbines=True,
         verify_convergence=False,
+        per_wd_sample=False
     ):
         """
         Instantiate YawOptimization object with a FlorisModel object
@@ -110,6 +111,8 @@ class YawOptimization(LoggingManager):
         #         " speed. Please assign FLORIS a single wind speed."
         #     )
 
+        self.per_wd_sample = per_wd_sample
+        
         # Initialize optimizer
         self.verify_convergence = verify_convergence
         if yaw_angles_baseline is not None:
@@ -169,6 +172,8 @@ class YawOptimization(LoggingManager):
         self.calc_baseline_power = calc_baseline_power
         self.exclude_downstream_turbines = exclude_downstream_turbines
 
+        # if self.per_wd_sample:
+        #     self.yaw_angles_baseline = np.tile(self.yaw_angles_baseline, (self.fmodel.n_sample_points, 1))
 
         # Prepare for optimization and calculate baseline powers (if applic.)
         self._initialize()
@@ -364,10 +369,14 @@ class YawOptimization(LoggingManager):
             power_setpoints=power_setpoints,
         )
         fmodel_subset.run()
-        turbine_power = fmodel_subset.get_turbine_powers()
+        turbine_power = fmodel_subset.get_turbine_powers(per_wd_sample=self.per_wd_sample)
 
         # Multiply with turbine weighing terms
-        turbine_power_weighted = np.multiply(turbine_weights, turbine_power)
+        if self.per_wd_sample:
+             turbine_power_weighted = np.multiply(turbine_weights[:, :, np.newaxis], np.swapaxes(turbine_power, 1, 2))
+        else:
+            turbine_power_weighted = np.multiply(turbine_weights, turbine_power)
+            
         farm_power_weighted = np.sum(turbine_power_weighted, axis=1)
         return farm_power_weighted
 
@@ -406,22 +415,41 @@ class YawOptimization(LoggingManager):
 
         # Produce output table
         df_list = []
-        df_list.append(
-            pd.DataFrame(
-                {
-                    "wind_direction": self.fmodel.core.flow_field.wind_directions,
-                    "wind_speed": self.fmodel.core.flow_field.wind_speeds,
-                    "turbulence_intensity": self.fmodel.core.flow_field.turbulence_intensities,
-                    "yaw_angles_opt": list(self.yaw_angles_opt[:, :]),
-                    "farm_power_opt": None
-                    if self.farm_power_opt is None
-                    else self.farm_power_opt[:],
-                    "farm_power_baseline": None
-                    if self.farm_power_baseline is None
-                    else self.farm_power_baseline[:],
-                }
+        if self.per_wd_sample:
+            df_list.append(
+                pd.DataFrame(
+                    {
+                        "wind_direction": np.tile(self.fmodel.core.flow_field.wind_directions, (self.fmodel.n_sample_points,)),
+                        "wind_speed": np.tile(self.fmodel.core.flow_field.wind_speeds, (self.fmodel.n_sample_points,)),
+                        "wd_sample_idx": np.repeat(np.arange(self.fmodel.n_sample_points), (self.fmodel.n_unexpanded,)),
+                        "turbulence_intensity": np.tile(self.fmodel.core.flow_field.turbulence_intensities, (self.fmodel.n_sample_points,)),
+                        "yaw_angles_opt": list(np.reshape(np.swapaxes(self.yaw_angles_opt, 1, 2), (self.fmodel.n_expanded, self.fmodel.n_turbines), order="F")),
+                        "farm_power_opt": None
+                        if self.farm_power_opt is None
+                        else self.farm_power_opt.T.flatten(),
+                        "farm_power_baseline": None
+                        if self.farm_power_baseline is None
+                        else self.farm_power_baseline.T.flatten(),
+                    }
+                )
             )
-        )
+        else:
+            df_list.append(
+                pd.DataFrame(
+                    {
+                        "wind_direction": self.fmodel.core.flow_field.wind_directions,
+                        "wind_speed": self.fmodel.core.flow_field.wind_speeds,
+                        "turbulence_intensity": self.fmodel.core.flow_field.turbulence_intensities,
+                        "yaw_angles_opt": list(self.yaw_angles_opt[:, :]),
+                        "farm_power_opt": None
+                        if self.farm_power_opt is None
+                        else self.farm_power_opt[:],
+                        "farm_power_baseline": None
+                        if self.farm_power_baseline is None
+                        else self.farm_power_baseline[:],
+                    }
+                )
+            )
         df_opt = pd.concat(df_list, axis=0)
 
         return df_opt

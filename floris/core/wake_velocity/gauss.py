@@ -177,8 +177,8 @@ class GaussVelocityDeficit(BaseModel):
             far_wake_deficit = gaussian_function(C, r, 1, np.sqrt(0.5))
             far_wake_deficit *= far_wake_mask
 
-            velocity_deficit += far_wake_deficit
-
+            velocity_deficit += far_wake_deficit 
+        
         return velocity_deficit
 
 

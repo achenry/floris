@@ -213,7 +213,7 @@ def sequential_solver(
             rotor_diameter_i,
             **deficit_model_args,
         )
-
+        
         wake_field = model_manager.combination_model.function(
             wake_field,
             velocity_deficit * flow_field.u_initial_sorted
