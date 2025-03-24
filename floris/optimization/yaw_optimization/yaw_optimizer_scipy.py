@@ -28,7 +28,7 @@ class YawOptimizationScipy(YawOptimization):
         exclude_downstream_turbines=True,
         verify_convergence=False,
         parallel=False,
-        per_wd_sample=False
+        include_wd_stddev=False
     ):
         """
         Instantiate YawOptimizationScipy object with a FlorisModel object
@@ -61,7 +61,7 @@ class YawOptimizationScipy(YawOptimization):
             calc_baseline_power=True,
             exclude_downstream_turbines=exclude_downstream_turbines,
             verify_convergence=verify_convergence,
-            per_wd_sample=per_wd_sample
+            include_wd_stddev=include_wd_stddev
         )
 
         self.opt_method = opt_method
@@ -80,44 +80,46 @@ class YawOptimizationScipy(YawOptimization):
             array is equal in length to the number of turbines in the farm.
         """
         # Loop through every wind condition individually
-        wd_array = self.fmodel_subset.core.flow_field.wind_directions
-        ws_array = self.fmodel_subset.core.flow_field.wind_speeds
-        ti_array = self.fmodel_subset.core.flow_field.turbulence_intensities
-        if self.per_wd_sample:
-            wd_sample_indices = np.repeat(np.arange(self.fmodel_subset.n_sample_points), (self.fmodel_subset.n_unexpanded,))
-            wd_array = np.tile(wd_array, (self.fmodel_subset.n_sample_points,))
-            ws_array = np.tile(ws_array, (self.fmodel_subset.n_sample_points,))
-            ti_array = np.tile(ti_array, (self.fmodel_subset.n_sample_points,))
-            _minimum_yaw_angle_subset_norm = np.tile(self._minimum_yaw_angle_subset_norm, (self.fmodel_subset.n_sample_points,1))
-            _maximum_yaw_angle_subset_norm = np.tile(self._maximum_yaw_angle_subset_norm, (self.fmodel_subset.n_sample_points,1))
-            _turbs_to_opt_subset = np.tile(self._turbs_to_opt_subset, (self.fmodel_subset.n_sample_points,1))
-            _x0_subset_norm = np.tile(self._x0_subset_norm, (self.fmodel_subset.n_sample_points,1))
-            _farm_power_baseline_subset = self._farm_power_baseline_subset.T.flatten()
-            _yaw_angles_template_subset = np.tile(self._yaw_angles_template_subset, (self.fmodel_subset.n_sample_points,1))
-            _turbine_weights_subset = np.tile(self._turbine_weights_subset, (self.fmodel_subset.n_sample_points,1))
+        if self.include_wd_stddev:
+            n_repeats = len(np.unique(self.fmodel_subset.wd_std))
+            wd_array = np.tile(self.fmodel_subset.core.flow_field.wind_directions, (n_repeats,))
+            ws_array = np.tile(self.fmodel_subset.core.flow_field.wind_speeds, (n_repeats,))
+            ti_array = np.tile(self.fmodel_subset.core.flow_field.turbulence_intensities, (n_repeats,))
+            wd_stddev_array = self.fmodel_subset.wd_std #np.repeat(self.fmodel_subset.wd_std, (self.fmodel_subset.n_findex,))
+            _minimum_yaw_angle_subset_norm = np.tile(self._minimum_yaw_angle_subset_norm, (n_repeats,1))
+            _maximum_yaw_angle_subset_norm = np.tile(self._maximum_yaw_angle_subset_norm, (n_repeats,1))
+            _turbs_to_opt_subset = np.tile(self._turbs_to_opt_subset, (n_repeats,1))
+            _x0_subset_norm = np.tile(self._x0_subset_norm, (n_repeats,1))
+            _farm_power_baseline_subset = self._farm_power_baseline_subset
+            _yaw_angles_template_subset = np.tile(self._yaw_angles_template_subset, (n_repeats,1))
+            _turbine_weights_subset = np.tile(self._turbine_weights_subset, (n_repeats,1))
         else:
-            wd_sample_indices = [None] * wd_array.shape[0]
-            _minimum_yaw_angle_subset_norm = _minimum_yaw_angle_subset_norm
-            _maximum_yaw_angle_subset_norm = _maximum_yaw_angle_subset_norm
-            _turbs_to_opt_subset = _turbs_to_opt_subset
-            _x0_subset_norm = _x0_subset_norm
-            _farm_power_baseline_subset = _farm_power_baseline_subset
-            _yaw_angles_template_subset = _yaw_angles_template_subset
-            _turbine_weights_subset = _turbine_weights_subset
+            wd_array = self.fmodel_subset.core.flow_field.wind_directions
+            ws_array = self.fmodel_subset.core.flow_field.wind_speeds
+            ti_array = self.fmodel_subset.core.flow_field.turbulence_intensities
+            wd_stddev_array = [None] * self.fmodel_subset.n_findex
+            _minimum_yaw_angle_subset_norm = self._minimum_yaw_angle_subset_norm
+            _maximum_yaw_angle_subset_norm = self._maximum_yaw_angle_subset_norm
+            _turbs_to_opt_subset = self._turbs_to_opt_subset
+            _x0_subset_norm = self._x0_subset_norm
+            _farm_power_baseline_subset = self._farm_power_baseline_subset
+            _yaw_angles_template_subset = self._yaw_angles_template_subset
+            _turbine_weights_subset = self._turbine_weights_subset
 
         het_sm_arr = np.array(self.fmodel.core.flow_field.heterogeneous_inflow_config['speed_multipliers']) if (hasattr(self.fmodel.core.flow_field, 'heterogeneous_inflow_config') and
                     self.fmodel.core.flow_field.heterogeneous_inflow_config is not None) else None
-        if het_sm_arr is not None and self.per_wd_sample:
-            het_sm_arr = np.tile(het_sm_arr, (self.fmodel_subset.n_sample_points,))
+        
+        if het_sm_arr is not None and self.include_wd_stddev:
+            het_sm_arr = np.tile(het_sm_arr, (n_repeats,))
             
         if self.parallel:
             with ProcessPoolExecutor() as executor:
                 futures = [executor.submit(optimize_yaw_angles, fmodel=self.fmodel.copy(), 
-                                           wd=wd, ws=ws, ti=ti, wd_sample_idx=wd_sample_idx,
+                                           wd=wd, ws=ws, ti=ti, wd_stddev=wd_stddev,
                                             turbs_to_opt=_turbs_to_opt_subset[i, :],
                                             yaw_lb=_minimum_yaw_angle_subset_norm[i, _turbs_to_opt_subset[i, :]],
                                             yaw_ub=_maximum_yaw_angle_subset_norm[i, _turbs_to_opt_subset[i, :]],
-                                            x0=_x0_subset_norm[i, _turbs_to_opt_subset[i, :]],
+                                            x0=_x0_subset_norm[i,_turbs_to_opt_subset[i, :]],
                                             J0=_farm_power_baseline_subset[i],
                                             yaw_template=_yaw_angles_template_subset[i, :],
                                             het_sm=None if het_sm_arr is None else het_sm_arr[i, :].reshape(1, -1),
@@ -125,15 +127,15 @@ class YawOptimizationScipy(YawOptimization):
                                             normalization_length=self._normalization_length,
                                             calculate_farm_power_func=self._calculate_farm_power,
                                             opt_method=self.opt_method, opt_options=self.opt_options) 
-                           for i, (wd, ws, ti, wd_sample_idx) in enumerate(zip(wd_array, ws_array, ti_array, wd_sample_indices))]
+                           for i, (wd, ws, ti, wd_stddev) in enumerate(zip(wd_array, ws_array, ti_array, wd_stddev_array))]
                 
                 residual_plants = [fut.result() for fut in futures]
 
         else:
-            for i, (wd, ws, ti, wd_sample_idx) in enumerate(zip(wd_array, ws_array, ti_array, wd_sample_indices)):
+            for i, (wd, ws, ti, wd_stddev) in enumerate(zip(wd_array, ws_array, ti_array, wd_stddev_array)):
                 # Handle heterogeneous inflow, if there is one
                 residual_plants = optimize_yaw_angles(fmodel=self.fmodel.copy(), 
-                                    wd=wd, ws=ws, ti=ti, wd_sample_idx=wd_sample_idx,
+                                    wd=wd, ws=ws, ti=ti, wd_stddev=wd_stddev,
                                     turbs_to_opt=_turbs_to_opt_subset[i, :],
                                     yaw_lb=_minimum_yaw_angle_subset_norm[i, _turbs_to_opt_subset[i, :]],
                                     yaw_ub=_maximum_yaw_angle_subset_norm[i, _turbs_to_opt_subset[i, :]],
@@ -143,40 +145,49 @@ class YawOptimizationScipy(YawOptimization):
                                     het_sm=None if het_sm_arr is None else het_sm_arr[i, :].reshape(1, -1),
                                     turbine_weights=_turbine_weights_subset[i, :],
                                     normalization_length=self._normalization_length,
-                                    calculate_farm_power_func=self._calculate_farm_power)
+                                    calculate_farm_power_func=self._calculate_farm_power,
+                                    opt_method=self.opt_method, opt_options=self.opt_options)
 
-        if self.per_wd_sample and self._yaw_angles_opt_subset.ndim < 3:
-            self._yaw_angles_opt_subset = np.tile(self._yaw_angles_opt_subset[:, :, np.newaxis], (1, 1, self.fmodel_subset.n_sample_points))
+        if self.include_wd_stddev and self._yaw_angles_opt_subset.shape[0] != self._farm_power_baseline_subset.shape[0]:
+            self._yaw_angles_opt_subset = np.tile(self._yaw_angles_opt_subset, (n_repeats, 1))
         # Undo normalization/masks and save results to self
         for i, residual_plant in enumerate(residual_plants):
             if residual_plant is None:
                 continue
-            J0 = _farm_power_baseline_subset[i]
+            J0 = self._farm_power_baseline_subset[i]
             turbs_to_opt = _turbs_to_opt_subset[i, :]
-            if self.per_wd_sample:
-                wd_sample_idx = int(i // self.fmodel_subset.n_unexpanded) 
-                input_idx = i % self.fmodel_subset.n_unexpanded
-                self._farm_power_opt_subset[input_idx, wd_sample_idx] = -residual_plant.fun * J0
-                self._yaw_angles_opt_subset[input_idx, turbs_to_opt, wd_sample_idx] = (
-                    residual_plant.x * self._normalization_length
-                )
-            else:
-                self._farm_power_opt_subset[i] = -residual_plant.fun * J0
-                self._yaw_angles_opt_subset[i, turbs_to_opt] = (
-                    residual_plant.x * self._normalization_length
-                )
+            # if self.per_wd_sample:
+            #     wd_sample_idx = int(i // self.fmodel_subset.n_unexpanded) 
+            #     input_idx = i % self.fmodel_subset.n_unexpanded
+            #     self._farm_power_opt_subset[input_idx, wd_sample_idx] = -residual_plant.fun * J0
+            #     self._yaw_angles_opt_subset[input_idx, turbs_to_opt, wd_sample_idx] = (
+            #         residual_plant.x * self._normalization_length
+            #     )
+            # else:
+            self._farm_power_opt_subset[i] = -residual_plant.fun * J0
+            self._yaw_angles_opt_subset[i, turbs_to_opt] = (
+                residual_plant.x * self._normalization_length
+            )
 
         # Finalize optimization, i.e., retrieve full solutions
         df_opt = self._finalize()
         return df_opt
 
-def optimize_yaw_angles(fmodel, wd, ws, ti, wd_sample_idx, turbs_to_opt, yaw_lb, yaw_ub, x0, J0, yaw_template, het_sm, turbine_weights,
+def optimize_yaw_angles(fmodel, wd, ws, ti, wd_stddev, turbs_to_opt, yaw_lb, yaw_ub, x0, J0, yaw_template, het_sm, turbine_weights,
                         normalization_length, calculate_farm_power_func, opt_method, opt_options):
-    fmodel.set(
-        wind_directions=[wd],
-        wind_speeds=[ws],
-        turbulence_intensities=[ti]
-    )
+    if wd_stddev is not None:
+        fmodel.set(
+            wind_directions=[wd],
+            wind_speeds=[ws],
+            turbulence_intensities=[ti],
+            wd_stddevs=[wd_stddev]
+        )
+    else:
+        fmodel.set(
+            wind_directions=[wd],
+            wind_speeds=[ws],
+            turbulence_intensities=[ti],
+        )
 
     # Find turbines to optimize
     if not any(turbs_to_opt):
@@ -198,14 +209,15 @@ def optimize_yaw_angles(fmodel, wd, ws, ti, wd_sample_idx, turbs_to_opt, yaw_lb,
                 wd_array=[wd],
                 ws_array=[ws],
                 ti_array=[ti],
+                wd_stddev_array=[wd_stddev],
                 turbine_weights=turbine_weights,
                 heterogeneous_speed_multipliers=het_sm
             )[0] / J0
         )
-        if wd_sample_idx is not None:
-            return cost[wd_sample_idx]
-        else:
-            return cost
+        # if wd_stddev is not None:
+        #     return cost[wd_sample_idx]
+        # else:
+        return cost
 
     # Perform optimization
     return minimize(

@@ -30,7 +30,7 @@ class YawOptimization(LoggingManager):
         calc_baseline_power=True,
         exclude_downstream_turbines=True,
         verify_convergence=False,
-        per_wd_sample=False
+        include_wd_stddev=False
     ):
         """
         Instantiate YawOptimization object with a FlorisModel object
@@ -111,7 +111,7 @@ class YawOptimization(LoggingManager):
         #         " speed. Please assign FLORIS a single wind speed."
         #     )
 
-        self.per_wd_sample = per_wd_sample
+        self.include_wd_stddev = include_wd_stddev
         
         # Initialize optimizer
         self.verify_convergence = verify_convergence
@@ -167,13 +167,15 @@ class YawOptimization(LoggingManager):
         else:
             self.turbine_weights = self._unpack_variable(turbine_weights)
 
+        if self.include_wd_stddev:
+            n_repeats = len(np.unique(fmodel.wd_std))
+            self.turbine_weights = np.tile(self.turbine_weights, (n_repeats, 1))
+            # self.yaw_angles_baseline = np.tile(self.yaw_angles_baseline, (n_repeats, 1))
+        
         # Save remaining user options to self
         self.normalize_variables = normalize_control_variables
         self.calc_baseline_power = calc_baseline_power
         self.exclude_downstream_turbines = exclude_downstream_turbines
-
-        # if self.per_wd_sample:
-        #     self.yaw_angles_baseline = np.tile(self.yaw_angles_baseline, (self.fmodel.n_sample_points, 1))
 
         # Prepare for optimization and calculate baseline powers (if applic.)
         self._initialize()
@@ -314,6 +316,7 @@ class YawOptimization(LoggingManager):
             turbine_weights=None,
             heterogeneous_speed_multipliers=None,
             power_setpoints=None,
+            wd_stddev_array=None
         ):
         """
         Calculate the wind farm power production assuming the predefined
@@ -349,33 +352,52 @@ class YawOptimization(LoggingManager):
             yaw_angles = self._yaw_angles_baseline_subset
         if turbine_weights is None:
             turbine_weights = self._turbine_weights_subset
+        if self.include_wd_stddev and wd_stddev_array is None:
+            wd_stddev_array = fmodel_subset.wd_std
         if heterogeneous_speed_multipliers is not None:
             fmodel_subset.core.flow_field.\
                 heterogeneous_inflow_config['speed_multipliers'] = heterogeneous_speed_multipliers
-
+        
+        # if self.include_wd_stddev:
+        #     n_repeats = len(np.unique(wd_stddev_array))
+        #     wd_array = np.tile(wd_array, (n_repeats,))
+        #     ws_array = np.tile(ws_array, (n_repeats,))
+        #     ti_array = np.tile(ti_array, (n_repeats,))
+        
         # Ensure format [incompatible with _subset notation]
         yaw_angles = self._unpack_variable(yaw_angles, subset=True)
 
         # # Correct wind direction definition: 270 deg is from left, cw positive
         # wd_array = wrap_360(wd_array)
 
-        # Calculate solutions
+        # Calculate solutions 
         turbine_power = np.zeros_like(self._minimum_yaw_angle_subset[:, :])
-        fmodel_subset.set(
-            wind_directions=wd_array,
-            wind_speeds=ws_array,
-            turbulence_intensities=ti_array,
-            yaw_angles=yaw_angles,
-            power_setpoints=power_setpoints,
-        )
+        if self.include_wd_stddev:
+            fmodel_subset.set(
+                wind_directions=wd_array,
+                wind_speeds=ws_array,
+                turbulence_intensities=ti_array,
+                yaw_angles=yaw_angles,
+                power_setpoints=power_setpoints,
+                wd_stddevs=np.unique(wd_stddev_array) if wd_stddev_array is not None else None 
+            )
+        else:
+            fmodel_subset.set(
+                wind_directions=wd_array,
+                wind_speeds=ws_array,
+                turbulence_intensities=ti_array,
+                yaw_angles=yaw_angles,
+                power_setpoints=power_setpoints
+            )
         fmodel_subset.run()
-        turbine_power = fmodel_subset.get_turbine_powers(per_wd_sample=self.per_wd_sample)
+        # turbine_power = fmodel_subset.get_turbine_powers(per_wd_sample=self.per_wd_sample)
+        turbine_power = fmodel_subset.get_turbine_powers()
 
         # Multiply with turbine weighing terms
-        if self.per_wd_sample:
-             turbine_power_weighted = np.multiply(turbine_weights[:, :, np.newaxis], np.swapaxes(turbine_power, 1, 2))
-        else:
-            turbine_power_weighted = np.multiply(turbine_weights, turbine_power)
+        # if self.per_wd_sample:
+        #      turbine_power_weighted = np.multiply(turbine_weights[:, :, np.newaxis], np.swapaxes(turbine_power, 1, 2))
+        # else:
+        turbine_power_weighted = np.multiply(turbine_weights, turbine_power)
             
         farm_power_weighted = np.sum(turbine_power_weighted, axis=1)
         return farm_power_weighted
@@ -415,21 +437,22 @@ class YawOptimization(LoggingManager):
 
         # Produce output table
         df_list = []
-        if self.per_wd_sample:
+        if self.include_wd_stddev:
+            n_repeats = len(np.unique(self.fmodel.wd_std))
             df_list.append(
                 pd.DataFrame(
                     {
-                        "wind_direction": np.tile(self.fmodel.core.flow_field.wind_directions, (self.fmodel.n_sample_points,)),
-                        "wind_speed": np.tile(self.fmodel.core.flow_field.wind_speeds, (self.fmodel.n_sample_points,)),
-                        "wd_sample_idx": np.repeat(np.arange(self.fmodel.n_sample_points), (self.fmodel.n_unexpanded,)),
-                        "turbulence_intensity": np.tile(self.fmodel.core.flow_field.turbulence_intensities, (self.fmodel.n_sample_points,)),
-                        "yaw_angles_opt": list(np.reshape(np.swapaxes(self.yaw_angles_opt, 1, 2), (self.fmodel.n_expanded, self.fmodel.n_turbines), order="F")),
+                        "wind_direction": np.tile(self.fmodel.core.flow_field.wind_directions, (n_repeats,)),
+                        "wind_speed": np.tile(self.fmodel.core.flow_field.wind_speeds, (n_repeats,)),
+                        "wd_stddev": self.fmodel.wd_std,
+                        "turbulence_intensity": np.tile(self.fmodel.core.flow_field.turbulence_intensities, (n_repeats,)),
+                        "yaw_angles_opt": list(self.yaw_angles_opt),
                         "farm_power_opt": None
                         if self.farm_power_opt is None
-                        else self.farm_power_opt.T.flatten(),
+                        else self.farm_power_opt,
                         "farm_power_baseline": None
                         if self.farm_power_baseline is None
-                        else self.farm_power_baseline.T.flatten(),
+                        else self.farm_power_baseline,
                     }
                 )
             )

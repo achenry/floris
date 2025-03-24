@@ -103,9 +103,12 @@ class UncertainFlorisModel(LoggingManager):
         self.wd_sample_points = wd_sample_points
         self.n_sample_points = len(self.wd_sample_points)
 
-        # Get the weights
-        self.weights = self._get_weights(self.wd_std, self.wd_sample_points)
-
+        # Get the weights NOTE: in the casd where we have mutiple values of wd_std, 
+        # if wd_sample_points is set as the same array of multiples for each value of wd_std, then the wd_std square cancels above and below
+        if np.array(self.wd_std).ndim == 0:
+            self.weights = self._get_weights(self.wd_std, self.wd_sample_points)
+        else:
+            self.weights = self._get_weights(self.wd_std[0], self.wd_sample_points[:, 0]) 
         # Instantiate the un-expanded FlorisModel
         if isinstance(configuration, (FlorisModel, ParFlorisModel)):
             self.fmodel_unexpanded = configuration.copy()
@@ -117,7 +120,7 @@ class UncertainFlorisModel(LoggingManager):
             )
 
         # Call set at this point with no arguments so ready to run
-        self.set()
+        self.set(wd_stddevs=wd_std)
 
 
     def set(
@@ -140,24 +143,36 @@ class UncertainFlorisModel(LoggingManager):
 
     def _set_uncertain(
         self,
-        wd_stdevs
+        wd_stddevs
     ):
         """
         Sets the underlying wind direction (wd), wind speed (ws), turbulence intensity (ti),
           yaw angle, and power setpoint for unique conditions, accounting for uncertainties.
 
         """
+        
+        if wd_stddevs is None:
+            n_wd_stddevs = 1
+            # wd_sample_points = self.wd_sample_points
+        else:
+            wd_stddevs = np.atleast_1d(wd_stddevs)
+            n_wd_stddevs = len(wd_stddevs)
+            # self.wd_stddevs_unexpanded = np.repeat(wd_stddevs, (self.fmodel_unexpanded.n_findex,))
+            self.wd_sample_points = np.linspace(-2, 2, 5)[:, np.newaxis] * wd_stddevs
+            self.wd_std = np.repeat(wd_stddevs, (self.fmodel_unexpanded.n_findex,)) # only used in _get_weights and to generate wd_sample_points
+            self.n_sample_points = self.wd_sample_points.shape[0]
+            self.wd_sample_points = np.repeat(self.wd_sample_points, self.fmodel_unexpanded.n_findex, axis=1)
+             # NOTE: these will not vary for different values of wd_std, as long as n_sample points is defined as the same multiples of the std_dev for each, std_dev^2 will cancel
+            # self.weights = self._get_weights(self.wd_std, self.wd_sample_points)
 
         # Grab the unexpanded values of all arrays
         # These original dimensions are what is returned
-        self.wind_directions_unexpanded = self.fmodel_unexpanded.core.flow_field.wind_directions
-        self.wind_speeds_unexpanded = self.fmodel_unexpanded.core.flow_field.wind_speeds
-        self.turbulence_intensities_unexpanded = (
-            self.fmodel_unexpanded.core.flow_field.turbulence_intensities
-        )
-        self.yaw_angles_unexpanded = self.fmodel_unexpanded.core.farm.yaw_angles
-        self.power_setpoints_unexpanded = self.fmodel_unexpanded.core.farm.power_setpoints
-        self.awc_amplitudes_unexpanded = self.fmodel_unexpanded.core.farm.awc_amplitudes
+        self.wind_directions_unexpanded = np.tile(self.fmodel_unexpanded.core.flow_field.wind_directions, (n_wd_stddevs,))
+        self.wind_speeds_unexpanded = np.tile(self.fmodel_unexpanded.core.flow_field.wind_speeds, (n_wd_stddevs,))
+        self.turbulence_intensities_unexpanded = np.tile(self.fmodel_unexpanded.core.flow_field.turbulence_intensities, (n_wd_stddevs,))
+        self.yaw_angles_unexpanded = np.tile(self.fmodel_unexpanded.core.farm.yaw_angles, (n_wd_stddevs,1))
+        self.power_setpoints_unexpanded = np.tile(self.fmodel_unexpanded.core.farm.power_setpoints, (n_wd_stddevs,1))
+        self.awc_amplitudes_unexpanded = np.tile(self.fmodel_unexpanded.core.farm.awc_amplitudes, (n_wd_stddevs,1))
         self.n_unexpanded = len(self.wind_directions_unexpanded)
 
         # Combine into the complete unexpanded_inputs
@@ -186,7 +201,7 @@ class UncertainFlorisModel(LoggingManager):
         # Get the expanded inputs
         self._expanded_wind_directions = self._expand_wind_directions(
             self.rounded_inputs,
-            self.wd_sample_points,
+            np.array(self.wd_sample_points),
             self.fix_yaw_to_nominal_direction,
             self.fmodel_unexpanded.core.farm.n_turbines,
         )
@@ -859,7 +874,7 @@ class UncertainFlorisModel(LoggingManager):
         # Check if wd_sample_points is odd-length and the middle element is 0
         if len(wd_sample_points) % 2 != 1:
             raise ValueError("wd_sample_points must have an odd length.")
-        if wd_sample_points[len(wd_sample_points) // 2] != 0:
+        if np.any(wd_sample_points[len(wd_sample_points) // 2] != 0):
             raise ValueError("The middle element of wd_sample_points must be 0.")
 
         # If fix_yaw_to_nominal_direction is True, n_turbines must be supplied
@@ -870,13 +885,15 @@ class UncertainFlorisModel(LoggingManager):
         num_rows = input_array.shape[0]
 
         # Create an array to hold the expanded data
+        # Organized as: all wind dirs for wd_stddev[0] and wd_sample_points[0], all wind dirs for wd_stddev[1] and wd_sample_points[0],
+        #            ...all wind dirs for wd_stddev[-1] and wd_sample_points[0], all wind dirs for wd_stddev[0] and wd_sample_points[1],
         output_array = np.zeros((num_rows * num_samples, input_array.shape[1]))
 
         # Repeat each row of input_array for each wind direction sample point
         for i in range(num_samples):
             start_idx = i * num_rows
             end_idx = start_idx + num_rows
-            output_array[start_idx:end_idx, :] = input_array.copy()
+            output_array[start_idx:end_idx, ] = input_array.copy()
 
             # Perturb the wd column by the current sample point
             output_array[start_idx:end_idx, 0] = (
@@ -934,7 +951,10 @@ class UncertainFlorisModel(LoggingManager):
         gaussian_values = np.exp(-(np.array(wd_sample_points) ** 2) / (2 * wd_std**2))
 
         # Normalize the Gaussian values to get the weights
+        # if wd_std.ndim == 1:
         weights = gaussian_values / np.sum(gaussian_values)
+        # else:
+        #     weights = gaussian_values / np.sum(gaussian_values, axis=1)[:, np.newaxis]
 
         return weights
 
