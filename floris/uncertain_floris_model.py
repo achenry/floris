@@ -155,7 +155,7 @@ class UncertainFlorisModel(LoggingManager):
             n_wd_stddevs = 1
             # wd_sample_points = self.wd_sample_points
         else:
-            wd_stddevs = np.atleast_1d(wd_stddevs)
+            wd_stddevs = np.unique(np.atleast_1d(wd_stddevs))
             n_wd_stddevs = len(wd_stddevs)
             # self.wd_stddevs_unexpanded = np.repeat(wd_stddevs, (self.fmodel_unexpanded.n_findex,))
             self.wd_sample_points = np.linspace(-2, 2, 5)[:, np.newaxis] * wd_stddevs

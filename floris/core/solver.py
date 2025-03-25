@@ -108,6 +108,8 @@ def sequential_solver(
             cubature_weights=grid.cubature_weights,
             multidim_condition=flow_field.multidim_conditions
         )
+        if np.any(ct_i < 0):
+            print("hi")
         # Since we are filtering for the i'th turbine in the thrust coefficient function,
         # get the first index here (0:1)
         ct_i = ct_i[:, 0:1, None, None]

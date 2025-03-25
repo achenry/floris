@@ -114,7 +114,7 @@ class YawOptimizationScipy(YawOptimization):
             
         if self.parallel:
             with ProcessPoolExecutor() as executor:
-                futures = [executor.submit(optimize_yaw_angles, fmodel=self.fmodel.copy(), 
+                futures = [executor.submit(optimize_yaw_angles, fmodel=self.fmodel, 
                                            wd=wd, ws=ws, ti=ti, wd_stddev=wd_stddev,
                                             turbs_to_opt=_turbs_to_opt_subset[i, :],
                                             yaw_lb=_minimum_yaw_angle_subset_norm[i, _turbs_to_opt_subset[i, :]],
@@ -134,7 +134,7 @@ class YawOptimizationScipy(YawOptimization):
         else:
             for i, (wd, ws, ti, wd_stddev) in enumerate(zip(wd_array, ws_array, ti_array, wd_stddev_array)):
                 # Handle heterogeneous inflow, if there is one
-                residual_plants = optimize_yaw_angles(fmodel=self.fmodel.copy(), 
+                residual_plants = optimize_yaw_angles(fmodel=self.fmodel, 
                                     wd=wd, ws=ws, ti=ti, wd_stddev=wd_stddev,
                                     turbs_to_opt=_turbs_to_opt_subset[i, :],
                                     yaw_lb=_minimum_yaw_angle_subset_norm[i, _turbs_to_opt_subset[i, :]],
@@ -156,14 +156,7 @@ class YawOptimizationScipy(YawOptimization):
                 continue
             J0 = self._farm_power_baseline_subset[i]
             turbs_to_opt = _turbs_to_opt_subset[i, :]
-            # if self.per_wd_sample:
-            #     wd_sample_idx = int(i // self.fmodel_subset.n_unexpanded) 
-            #     input_idx = i % self.fmodel_subset.n_unexpanded
-            #     self._farm_power_opt_subset[input_idx, wd_sample_idx] = -residual_plant.fun * J0
-            #     self._yaw_angles_opt_subset[input_idx, turbs_to_opt, wd_sample_idx] = (
-            #         residual_plant.x * self._normalization_length
-            #     )
-            # else:
+            
             self._farm_power_opt_subset[i] = -residual_plant.fun * J0
             self._yaw_angles_opt_subset[i, turbs_to_opt] = (
                 residual_plant.x * self._normalization_length
@@ -175,6 +168,9 @@ class YawOptimizationScipy(YawOptimization):
 
 def optimize_yaw_angles(fmodel, wd, ws, ti, wd_stddev, turbs_to_opt, yaw_lb, yaw_ub, x0, J0, yaw_template, het_sm, turbine_weights,
                         normalization_length, calculate_farm_power_func, opt_method, opt_options):
+    
+    print(f"Optimizing yaw angles for wind direction {wd}, wind speed {ws}, turbulence intensity {ti}, and wind direction standard deviation {wd_stddev}.")
+    fmodel = fmodel.copy()
     if wd_stddev is not None:
         fmodel.set(
             wind_directions=[wd],
