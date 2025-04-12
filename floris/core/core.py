@@ -205,7 +205,6 @@ class Core(BaseClass):
                 self.grid,
                 self.wake
             )
-
         self.finalize()
 
     def solve_for_viz(self):
