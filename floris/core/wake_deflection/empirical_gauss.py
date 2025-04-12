@@ -64,7 +64,7 @@ class EmpiricalGaussVelocityDeflection(BaseModel):
         }
         return kwargs
 
-    # @profile
+    
     def function(
         self,
         x_i: np.ndarray,

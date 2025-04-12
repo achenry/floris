@@ -172,7 +172,7 @@ class Core(BaseClass):
                 "due to active wake control. Corrections to power and thrust coefficient can " +
                 "be included, but no enhanced wake recovery will occur."
             )
-
+            
         if vel_model=="cc":
             cc_solver(
                 self.farm,
