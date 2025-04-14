@@ -132,9 +132,10 @@ class YawOptimizationScipy(YawOptimization):
                 residual_plants = [fut.result() for fut in futures]
 
         else:
+            residual_plants = []
             for i, (wd, ws, ti, wd_stddev) in enumerate(zip(wd_array, ws_array, ti_array, wd_stddev_array)):
                 # Handle heterogeneous inflow, if there is one
-                residual_plants = optimize_yaw_angles(fmodel=self.fmodel, 
+                residual_plants.append(optimize_yaw_angles(fmodel=self.fmodel, 
                                     wd=wd, ws=ws, ti=ti, wd_stddev=wd_stddev,
                                     turbs_to_opt=_turbs_to_opt_subset[i, :],
                                     yaw_lb=_minimum_yaw_angle_subset_norm[i, _turbs_to_opt_subset[i, :]],
@@ -146,7 +147,7 @@ class YawOptimizationScipy(YawOptimization):
                                     turbine_weights=_turbine_weights_subset[i, :],
                                     normalization_length=self._normalization_length,
                                     calculate_farm_power_func=self._calculate_farm_power,
-                                    opt_method=self.opt_method, opt_options=self.opt_options)
+                                    opt_method=self.opt_method, opt_options=self.opt_options))
 
         if self.include_wd_stddev and self._yaw_angles_opt_subset.shape[0] != self._farm_power_baseline_subset.shape[0]:
             self._yaw_angles_opt_subset = np.tile(self._yaw_angles_opt_subset, (n_repeats, 1))

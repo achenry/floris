@@ -21,6 +21,8 @@ def plot_turbine_points(
     fmodel: FlorisModel,
     ax: plt.Axes = None,
     turbine_indices: List[int] = None,
+    highlight_turbine_groups: List[int] = None,
+    highlight_colors: List[str|float]=None,
     plotting_dict: Dict[str, Any] = {},
 ) -> plt.Axes:
     """
@@ -69,12 +71,24 @@ def plot_turbine_points(
     plotting_dict = {**default_plotting_dict, **plotting_dict}
 
     # Plot
+    if highlight_turbine_groups is not None:
+        turbine_indices = list(set(turbine_indices) - set(np.concatenate(highlight_turbine_groups)))
     ax.plot(
         fmodel.layout_x[turbine_indices],
         fmodel.layout_y[turbine_indices],
         linestyle="None",
         **plotting_dict,
     )
+    
+    if highlight_turbine_groups is not None:
+        for indices, color in zip(highlight_turbine_groups, highlight_colors):
+            plotting_dict["color"] = color
+            ax.plot(
+                fmodel.layout_x[indices],
+                fmodel.layout_y[indices],
+                linestyle="None",
+                **plotting_dict,
+            )
 
     # Make sure axis set to equal
     # ax.axis("equal")

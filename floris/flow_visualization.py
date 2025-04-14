@@ -187,15 +187,15 @@ def visualize_cut_plane(
     if cut_plane.normal_vector == "x":
         ax.invert_xaxis()
 
-    if color_bar:
-        cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label('m/s')
-
     # Set the title
     ax.set_title(title)
 
     # Make equal axis
-    # ax.set_aspect("equal")
+    ax.set_aspect("equal")
+    
+    if color_bar:
+        cbar = plt.colorbar(im, ax=ax, fraction=0.0225, pad=0.04)
+        cbar.set_label('m/s')
 
     return ax
 

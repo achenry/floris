@@ -189,8 +189,8 @@ class GaussVelocityDeflection(BaseModel):
         sigma_z = sigma_z * (x >= x0) + sigma_z0 * (x < x0)
 
         # TODO TEST
-        if np.any(M0 < 0):
-            raise Exception("Negative M0")
+        # if np.any(M0 < 0):
+        #     raise Exception("Negative M0")
         
         M0_sqrt = np.sqrt(M0)
         middle_term = np.sqrt(sigma_y * sigma_z / (sigma_y0 * sigma_z0))
