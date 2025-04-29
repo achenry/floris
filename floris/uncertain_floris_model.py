@@ -103,7 +103,7 @@ class UncertainFlorisModel(LoggingManager):
         self.wd_sample_points = wd_sample_points
         self.n_sample_points = len(self.wd_sample_points)
 
-        # Get the weights NOTE: in the casd where we have mutiple values of wd_std, 
+        # Get the weights NOTE: in the case where we have mutiple values of wd_std, 
         # if wd_sample_points is set as the same array of multiples for each value of wd_std, then the wd_std square cancels above and below
         if np.array(self.wd_std).ndim == 0:
             self.weights = self._get_weights(self.wd_std, self.wd_sample_points)
@@ -159,6 +159,7 @@ class UncertainFlorisModel(LoggingManager):
             n_wd_stddevs = len(wd_stddevs)
             # self.wd_stddevs_unexpanded = np.repeat(wd_stddevs, (self.fmodel_unexpanded.n_findex,))
             self.wd_sample_points = np.linspace(-2, 2, 5)[:, np.newaxis] * wd_stddevs
+            # self.wd_sample_points = wd_stddevs[:, np.newaxis]
             self.wd_std = np.repeat(wd_stddevs, (self.fmodel_unexpanded.n_findex,)) # only used in _get_weights and to generate wd_sample_points
             self.n_sample_points = self.wd_sample_points.shape[0]
             self.wd_sample_points = np.repeat(self.wd_sample_points, self.fmodel_unexpanded.n_findex, axis=1)
@@ -187,16 +188,19 @@ class UncertainFlorisModel(LoggingManager):
             )
         )
 
-        # Get the rounded inputs
-        self.rounded_inputs = self._get_rounded_inputs(
-            self.unexpanded_inputs,
-            self.wd_resolution,
-            self.ws_resolution,
-            self.ti_resolution,
-            self.yaw_resolution,
-            self.power_setpoint_resolution,
-            self.awc_amplitude_resolution,
-        )
+        # Get the rounded inputs TODO only if not optimizing over wd_stddev:
+        if False:
+            self.rounded_inputs = self._get_rounded_inputs(
+                self.unexpanded_inputs,
+                self.wd_resolution,
+                self.ws_resolution,
+                self.ti_resolution,
+                self.yaw_resolution,
+                self.power_setpoint_resolution,
+                self.awc_amplitude_resolution,
+            )
+        else:
+            self.rounded_inputs = self.unexpanded_inputs
 
         # Get the expanded inputs
         self._expanded_wind_directions = self._expand_wind_directions(
@@ -271,7 +275,7 @@ class UncertainFlorisModel(LoggingManager):
 
         self.fmodel_expanded.run_no_wake()
 
-    def _get_turbine_powers(self, per_wd_sample):
+    def _get_turbine_powers(self):
         """Calculates the power at each turbine in the wind farm.
 
         This method calculates the power at each turbine in the wind farm, considering
@@ -289,13 +293,12 @@ class UncertainFlorisModel(LoggingManager):
             weights=self.weights,
             n_unexpanded=self.n_unexpanded,
             n_sample_points=self.n_sample_points,
-            n_turbines=self.fmodel_unexpanded.core.farm.n_turbines,
-            per_wd_sample=per_wd_sample
+            n_turbines=self.fmodel_unexpanded.core.farm.n_turbines
         )
 
         return result
 
-    def get_turbine_powers(self, per_wd_sample=False):
+    def get_turbine_powers(self):
         """
         Calculate the power at each turbine in the wind farm.  If WindRose or
            WindTIRose is passed in, result is reshaped to match
@@ -304,7 +307,7 @@ class UncertainFlorisModel(LoggingManager):
             NDArrayFloat: An array containing the powers at each turbine for each findex.
         """
 
-        turbine_powers = self._get_turbine_powers(per_wd_sample=per_wd_sample)
+        turbine_powers = self._get_turbine_powers()
 
         if self.fmodel_unexpanded.wind_data is not None:
             if isinstance(self.fmodel_unexpanded.wind_data, (WindRose, WindRoseWRG)):
@@ -870,12 +873,12 @@ class UncertainFlorisModel(LoggingManager):
         the resultant values are within the range
         of 0 to 360.
         """
-
+        # TODO do not raise these if optimizing for singular wd_stddev, do otherwise
         # Check if wd_sample_points is odd-length and the middle element is 0
-        if len(wd_sample_points) % 2 != 1:
-            raise ValueError("wd_sample_points must have an odd length.")
-        if np.any(wd_sample_points[len(wd_sample_points) // 2] != 0):
-            raise ValueError("The middle element of wd_sample_points must be 0.")
+        # if len(wd_sample_points) % 2 != 1:
+        #     raise ValueError("wd_sample_points must have an odd length.")
+        # if np.any(wd_sample_points[len(wd_sample_points) // 2] != 0):
+        #     raise ValueError("The middle element of wd_sample_points must be 0.")
 
         # If fix_yaw_to_nominal_direction is True, n_turbines must be supplied
         if fix_yaw_to_nominal_direction and n_turbines is None:
@@ -948,8 +951,10 @@ class UncertainFlorisModel(LoggingManager):
         """
 
         # Calculate the Gaussian function values at sample points
-        gaussian_values = np.exp(-(np.array(wd_sample_points) ** 2) / (2 * wd_std**2))
-
+        if wd_std != 0:
+            gaussian_values = np.exp(-(np.array(wd_sample_points) ** 2) / (2 * wd_std**2))
+        else:
+            gaussian_values = np.ones_like(wd_sample_points)
         # Normalize the Gaussian values to get the weights
         # if wd_std.ndim == 1:
         weights = gaussian_values / np.sum(gaussian_values)
@@ -1154,8 +1159,7 @@ def map_turbine_powers_uncertain(
     weights,
     n_unexpanded,
     n_sample_points,
-    n_turbines,
-    per_wd_sample
+    n_turbines
 ):
     """Calculates the power at each turbine in the wind farm based on uncertainty weights.
 
@@ -1187,8 +1191,8 @@ def map_turbine_powers_uncertain(
         order="F",
     )
     
-    if per_wd_sample:
-        return blocks
+    # if per_wd_sample:
+    #     return blocks
     
     # Reshape the weights array to make it compatible with broadcasting
     weights_reshaped = weights[:, np.newaxis]

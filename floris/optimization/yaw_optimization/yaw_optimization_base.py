@@ -373,13 +373,18 @@ class YawOptimization(LoggingManager):
         # Calculate solutions 
         turbine_power = np.zeros_like(self._minimum_yaw_angle_subset[:, :])
         if self.include_wd_stddev:
+            if wd_stddev_array is not None:
+                _, unq_idx = np.unique(wd_stddev_array, return_index=True)
+                wd_stddevs = np.array(wd_stddev_array)[unq_idx]
+            else:
+                wd_stddevs = None
             fmodel_subset.set(
                 wind_directions=wd_array,
                 wind_speeds=ws_array,
                 turbulence_intensities=ti_array,
                 yaw_angles=yaw_angles,
                 power_setpoints=power_setpoints,
-                wd_stddevs=np.unique(wd_stddev_array) if wd_stddev_array is not None else None 
+                wd_stddevs=wd_stddevs
             )
         else:
             fmodel_subset.set(
