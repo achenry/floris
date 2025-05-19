@@ -122,7 +122,6 @@ class UncertainFlorisModel(LoggingManager):
         # Call set at this point with no arguments so ready to run
         self.set(wd_stddevs=wd_std)
 
-
     def set(
         self,
         wd_stddevs=None,

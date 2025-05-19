@@ -159,7 +159,7 @@ def plot_turbine_labels(
         rotor_diameters = fmodel.core.farm.rotor_diameters.flatten()
         r = rotor_diameters[0] / 2.0
         label_offset = r / 8.0
-
+        
     # If turbine_indices is not none, make sure all elements correspond to real indices
     if turbine_indices is not None:
         try:
@@ -180,22 +180,41 @@ def plot_turbine_labels(
     default_bbox_dict = {"facecolor": "gray", "alpha": 0.5, "pad": 0.1, "boxstyle": "round"}
     bbox_dict = {**default_bbox_dict, **bbox_dict}
 
-    for ti in turbine_indices:
-        if not show_bbox:
-            ax.text(
-                fmodel.layout_x[ti] + label_offset,
-                fmodel.layout_y[ti] + label_offset,
-                turbine_names[ti],
-                **plotting_dict,
-            )
-        else:
-            ax.text(
-                fmodel.layout_x[ti] + label_offset,
-                fmodel.layout_y[ti] + label_offset,
-                turbine_names[ti],
-                bbox=bbox_dict,
-                **plotting_dict,
-            )
+    if isinstance(label_offset, list):
+        # list of tuples
+        for ti, lo in zip(turbine_indices, label_offset):
+            if not show_bbox:
+                ax.text(
+                    fmodel.layout_x[ti] + lo[0],
+                    fmodel.layout_y[ti] + lo[1],
+                    turbine_names[ti],
+                    **plotting_dict,
+                )
+            else:
+                ax.text(
+                    fmodel.layout_x[ti] + lo[0],
+                    fmodel.layout_y[ti] + lo[1],
+                    turbine_names[ti],
+                    bbox=bbox_dict,
+                    **plotting_dict,
+                )
+    else:
+        for ti in turbine_indices:
+            if not show_bbox:
+                ax.text(
+                    fmodel.layout_x[ti] + label_offset,
+                    fmodel.layout_y[ti] + label_offset,
+                    turbine_names[ti],
+                    **plotting_dict,
+                )
+            else:
+                ax.text(
+                    fmodel.layout_x[ti] + label_offset,
+                    fmodel.layout_y[ti] + label_offset,
+                    turbine_names[ti],
+                    bbox=bbox_dict,
+                    **plotting_dict,
+                )
 
     # Plot labels and aesthetics
     # ax.axis("equal") # adds ugly grid back in

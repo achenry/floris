@@ -215,12 +215,20 @@ def optimize_yaw_angles(fmodel, wd, ws, ti, wd_stddev, turbs_to_opt, yaw_lb, yaw
         #     return cost[wd_sample_idx]
         # else:
         return cost
+    
+    init_cost = cost(x0)
 
     # Perform optimization
-    return minimize(
+    res = minimize(
         fun=cost,
         x0=x0,
         bounds=bnds,
         method=opt_method,
         options=opt_options,
     )
+    
+    if res.fun > init_cost:
+        res.x = x0 #self.yaw_angles_baseline[turbs_to_opt]
+        res.fun = init_cost
+
+    return res
