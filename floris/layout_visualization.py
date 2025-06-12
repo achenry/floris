@@ -171,7 +171,7 @@ def plot_turbine_labels(
 
     # Generate plotting dictionary
     default_plotting_dict = {
-        "color": "black",
+        "color": "white",
         "label": None,
     }
     plotting_dict = {**default_plotting_dict, **plotting_dict}
@@ -190,6 +190,11 @@ def plot_turbine_labels(
                     turbine_names[ti],
                     **plotting_dict,
                 )
+                l = [ch for ch in ax.get_children() if isinstance(ch, matplotlib.text.Text) and ch.get_text() == turbine_names[ti]][0]
+                ax.annotate(text="", 
+                            xytext=(l._x + l.get_window_extent().width*9, l._y + l.get_window_extent().height*9),
+                             xy=(fmodel.layout_x[ti] * 0.99, fmodel.layout_y[ti] * 0.99),
+                        arrowprops=dict(width=2, color="white"))
             else:
                 ax.text(
                     fmodel.layout_x[ti] + lo[0],
@@ -218,7 +223,7 @@ def plot_turbine_labels(
 
     # Plot labels and aesthetics
     # ax.axis("equal") # adds ugly grid back in
-    ax.set_aspect("equal") # maintains clean figure
+    # ax.set_aspect("equal") # maintains clean figure
     return ax
 
 
