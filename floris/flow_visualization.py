@@ -154,11 +154,20 @@ def visualize_cut_plane(
     if clevels is None:
         clevels = levels
 
+    existing_x1_min, existing_x1_max, existing_x2_min, existing_x2_max = (
+        cut_plane.df.x1.min(),
+        cut_plane.df.x1.max(),
+        cut_plane.df.x2.min(),
+        cut_plane.df.x2.max()
+    )
+    
     corner_values_df = pd.DataFrame(
-        data={"x1": [cut_plane.df.x1.min(), cut_plane.df.x1.min(), cut_plane.df.x1.max(), cut_plane.df.x1.max()], 
-              "x2": [cut_plane.df.x2.min(), cut_plane.df.x2.max(), cut_plane.df.x2.min(), cut_plane.df.x2.max()], 
-              "u": [cut_plane.df.u.max()] * 4})
-    cut_plane.df = pd.concat([cut_plane.df, corner_values_df], ignore_index=True)
+        data={"x1": [existing_x1_min, existing_x1_min, existing_x1_max, existing_x1_max], # + x1_corners, 
+              "x2": [existing_x2_min, existing_x2_max, existing_x2_min, existing_x2_max], # + x2_corners, 
+              "x3": [cut_plane.df.x3.iloc[0]] * 4,
+              "u": [max_speed] * 4,
+              })
+    cut_plane.df = pd.concat([corner_values_df, cut_plane.df], ignore_index=True)
     
     # Plot the cut-through
     im = ax.tricontourf(
